@@ -29,11 +29,8 @@ class HumanPlayer(Player):
         while not valid_input:
             print(f"\nPlayer: {self.name}")
             print("State")
-            state_np_for_cov, human_view_state = get_training_and_viewing_state(
-                game, state
-            )
-            print(state_np_for_cov)
-            print(human_view_state)
+            eval_vector = get_eval_vector(game, state)
+            show_state_on_terminal(eval_vector)
             print("Available moves:")
             print(state.legal_actions())
             new_input = input(f"Select a move:")
