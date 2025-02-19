@@ -1,9 +1,6 @@
-# Connect4 AI
+# Margam
 
-Train a bot to play Connect4
-
-Uses Deep Q-learning from Chapter 6 of Deep Reinforcement Learning Hands-On [1]. Also uses policy gradient from Chapter 9.
-
+Margam = Markov Games. Reinforcement learning to train bots to play games that are Markov decision processes, e.g. Connect Four. Uses Deep Q-learning from Chapter 6 of and Policy Gradient from Chapter 9 of Deep Reinforcement Learning Hands-On [1].
 
 [1] Lapan, Maxim. Deep Reinforcement Learning Hands-On: Apply modern RL methods, with deep Q-networks, value iteration, policy gradients, TRPO, AlphaGo Zero and more. Packt Publishing Ltd, 2018.
 
