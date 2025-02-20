@@ -25,7 +25,6 @@ class HumanPlayer(Player):
     def get_move(self, state) -> int:
 
         print(f"\nPlayer: {self.name}")
-        print("State")
         eval_vector = self.game_handler.get_eval_vector(state)
         self.game_handler.show_state_on_terminal(eval_vector)
         print("Available moves:")

@@ -78,7 +78,7 @@ class GameHandler(ABC):
         """
         state = self.game.new_initial_state()
 
-        agent_transitions = [[] for _ in players]
+        agent_transitions = [[]] *len(players)
         while not state.is_terminal():
             if state.is_chance_node():
                 # Sample a chance event outcome.
@@ -211,7 +211,7 @@ class LiarsDiceHandler(GameHandler):
 
         train_tensor = np.zeros(14)
         bets_placed_flat = bets_placed.flatten()
-        if bets_placed_flat.sum() >= 1:    # only has previous bet
+        if bets_placed_flat.sum() >= 1:    # only opponent has previous bet
             ind = bets_placed_flat.argmax()
             quantity = ind // 6 + 1
             value = ind % 6 + 1
@@ -226,9 +226,9 @@ class LiarsDiceHandler(GameHandler):
                 train_tensor[7] = quantity
                 train_tensor[7+value] = 1
                 bets_placed_flat[ind] = 1
+                train_tensor = np.concat([train_tensor[7:14],train_tensor[0:7]])
 
         train_tensor = np.concatenate([die_counts,train_tensor])
-
         return train_tensor
 
     def show_state_on_terminal(self,eval_vector):
@@ -236,14 +236,20 @@ class LiarsDiceHandler(GameHandler):
         Show to a human
         """
 
-        die_counts = np.reshape(eval_vector[2:2+5*6],(5,6)).sum(axis=0)
-        bets_placed = np.reshape(eval_vector[32:-1],(10,6))
+        print("Your die counts:")
+        for i, count in enumerate(eval_vector[:6]):
+            if count == 0:
+                continue
+            print(f"{int(count)} {i+1}s")
 
-        view_matrix = np.concatenate(
-            [die_counts[np.newaxis, :],
-            bets_placed,]
-        )
+        your_previous_bet_q = int(eval_vector[13])
+        your_previous_bet = eval_vector[14:20]
+        if your_previous_bet_q > 0:
+            value = int(np.where(your_previous_bet==1)[0]+1)
+            print(f"Your previous bet: {your_previous_bet_q} {value}'s")
 
-        train_tensor = np.concatenate([die_counts,train_tensor])
-
-        print(view_matrix)
+        opp_bet_q = int(eval_vector[6])
+        opp_bet = eval_vector[7:13]
+        if opp_bet_q > 0:
+            value = int(np.where(opp_bet==1)[0]+1)
+            print(f"Opponent's bet: {opp_bet_q} {value}'s")
