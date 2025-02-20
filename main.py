@@ -72,10 +72,13 @@ def play(game_type, opponent, depth, model, second):
         opponent.model = load_model(model)
         opponent.model.summary()
 
-    
-    tsns = gh.generate_episode_transitions(human, opponent, 1 if second else 0)
+    players = [human, opponent]
+    if second:
+        players = list(reversed(players))
+    tsns = gh.generate_episode_transitions(players)
 
-    winner = np.argmax(state.returns())
+    total_rewards = [sum(tsn.reward for tsn in tsn_list) for tsn_list in tsns]
+    winner = np.argmax(total_rewards)
     print(f"{players[winner].name} won!")
 
 

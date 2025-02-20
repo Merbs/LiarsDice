@@ -6,6 +6,7 @@ from typing import List
 from dataclasses import dataclass
 import random
 from enum import Enum
+from abc import ABC, abstractmethod
 
 import pyspiel
 
@@ -33,7 +34,7 @@ class Transition:
 
 
 
-def build_game_handler(game_type: str) -> GameHandler:
+def build_game_handler(game_type: str):
     gt = GameType(game_type)
     if gt == GameType.CONNECT_FOUR:
         return ConnectFourHandler()
@@ -46,7 +47,7 @@ def build_game_handler(game_type: str) -> GameHandler:
 
 class GameHandler(ABC):
 
-    def __init__(self,game_type: str)
+    def __init__(self,game_type: str):
         self.game_type = GameType(game_type)
         self.game = self.get_open_spiel_game()
 
@@ -67,16 +68,17 @@ class GameHandler(ABC):
         """
         pass
 
-    def get_open_spiel_game(self,self):
+    def get_open_spiel_game(self):
         return pyspiel.load_game(self.game_type)
 
-    def generate_episode_transitions(self,agent, opponent, player_pos: int) -> List[Transition]:
+    def generate_episode_transitions(self, players) -> List[List[Transition]]:
         """
-        Generate transitions for a 2 player game
+        Generate state transition histories for all players.
+        Result is indexed in the same order as the supplied players
         """
         state = self.game.new_initial_state()
 
-        agent_transitions = []
+        agent_transitions = [[] for _ in players]
         while not state.is_terminal():
             if state.is_chance_node():
                 # Sample a chance event outcome.
@@ -84,18 +86,16 @@ class GameHandler(ABC):
                 action_list, prob_list = zip(*outcomes_with_probs)
                 action = np.random.choice(action_list, p=prob_list)
                 state.apply_action(action)
-                continue
-
-            current_player_ind = state.current_player()
-            current_player = agent if current_player_ind == player_pos else opponent
-            # If the player action is legal, do it. Otherwise, do random
-            desired_action = current_player.get_move(state)
-            if desired_action in state.legal_actions():
-                action = desired_action
             else:
-                action = random.choice(state.legal_actions())                
+                current_player_ind = state.current_player()
+                current_player = players[current_player_ind]
+                # If the player action is legal, do it. Otherwise, do random
+                desired_action = current_player.get_move(state)
+                if desired_action in state.legal_actions():
+                    action = desired_action
+                else:
+                    action = random.choice(state.legal_actions())                
 
-            if current_player_ind == player_pos:
                 legal_actions = [int(i in state.legal_actions()) for i in range(self.game.num_distinct_actions())]
                 state_for_cov = self.get_eval_vector(state)
                 new_transition = Transition(
@@ -103,12 +103,17 @@ class GameHandler(ABC):
                     action=action,
                     legal_actions=legal_actions,
                 )
-                agent_transitions.append(new_transition)
+                agent_transitions[current_player_ind].append(new_transition)
 
-            state.apply_action(action)
+                state.apply_action(action)
 
-            if agent_transitions:
-                agent_transitions[-1].reward = state.rewards()[player_pos]
+            # Update rewards for last action taken by each player
+            # since these may be updated after another player
+            # takes their turn
+            for player_ind, _ in enumerate(players):
+                if len(agent_transitions[player_ind]) == 0:
+                    continue
+                agent_transitions[player_ind][-1].reward = state.rewards()[player_ind]
 
         return agent_transitions
 
@@ -184,7 +189,7 @@ class LiarsDiceHandler(GameHandler):
         super().__init__(GameType.LIARS_DICE)
 
     def get_open_spiel_game(self):
-        return pyspiel.load_game(game_type,{"numdice":5})
+        return pyspiel.load_game(self.game_type.value,{"numdice":5})
 
     def get_eval_vector(self,state):
         """
