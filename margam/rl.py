@@ -50,25 +50,30 @@ class GameHandler(ABC):
         self.game_type = GameType(game_type)
         self.game = self.get_open_spiel_game()
 
-    @abstractmethod
-    def get_eval_vector(state):
+    def get_eval_vector(self,state):
         """
         Get a vector representing the observation
         of the current player
         """
-        pass
+        state_as_tensor = state.observation_tensor()
+        tensor_shape = self.game.observation_tensor_shape()
+        return np.reshape(np.asarray(state_as_tensor), tensor_shape)
+         
 
     @abstractmethod
-    def show_state_on_terminal(eval_vector):
+    def show_state_on_terminal(self,eval_vector):
         """
         Show to a human
         """
         pass
 
-    def get_open_spiel_game(self):
+    def get_open_spiel_game(self,self):
         return pyspiel.load_game(self.game_type)
 
-    def generate_episode_transitions(agent, opponent, player_pos) -> List[Transition]:
+    def generate_episode_transitions(self,agent, opponent, player_pos: int) -> List[Transition]:
+        """
+        Generate transitions for a 2 player game
+        """
         state = self.game.new_initial_state()
 
         agent_transitions = []
@@ -84,20 +89,20 @@ class GameHandler(ABC):
             current_player_ind = state.current_player()
             current_player = agent if current_player_ind == player_pos else opponent
             # If the player action is legal, do it. Otherwise, do random
-            desired_action = current_player.get_move(game, state)
+            desired_action = current_player.get_move(self.game, state)
             if desired_action in state.legal_actions():
                 action = desired_action
             else:
                 action = random.choice(state.legal_actions())                
 
-            legal_actions = [int(i in state.legal_actions()) for i in range(game.num_distinct_actions())]
-            state_for_cov, _ = get_training_and_viewing_state(game, state)
-            new_transition = Transition(
-                state=state_for_cov,
-                action=action,
-                legal_actions=legal_actions,
-            )
             if current_player_ind == player_pos:
+                legal_actions = [int(i in state.legal_actions()) for i in range(self.game.num_distinct_actions())]
+                state_for_cov = self.get_eval_vector(state)
+                new_transition = Transition(
+                    state=state_for_cov,
+                    action=action,
+                    legal_actions=legal_actions,
+                )
                 agent_transitions.append(new_transition)
 
             state.apply_action(action)
@@ -107,8 +112,7 @@ class GameHandler(ABC):
 
         return agent_transitions
 
-
-    def add_symmetries(training_data):
+    def add_symmetries(self,training_data):
         """
         Not implemented yet
         """
@@ -119,15 +123,13 @@ class ConnectFourHandler(GameHandler):
     def __init__(self):
         super().__init__(GameType.CONNECT_FOUR)
 
-    def get_eval_vector(state):
+    def get_eval_vector(self,state):
         """
         Get a vector representing the observation
         of the current player
         """
         
-        state_as_tensor = state.observation_tensor()
-        tensor_shape = self.game.observation_tensor_shape()
-        state_np = np.reshape(np.asarray(state_as_tensor), tensor_shape)
+        state_np = super().get_eval_vector(state)
 
         # Remove 1st element of 1st dimension showing empty spaces
         state_np = state_np[-1:0:-1, :, :]
@@ -137,7 +139,7 @@ class ConnectFourHandler(GameHandler):
 
         return state_np_for_cov
 
-    def show_state_on_terminal(eval_vector):
+    def show_state_on_terminal(self,eval_vector):
         """
         Show to a human
         """
@@ -151,51 +153,13 @@ class TicTacToeHandler(GameHandler):
     def __init__(self):
         super().__init__(GameType.TIC_TAC_TOE)
 
-    def get_eval_vector(state):
+    def get_eval_vector(self,state):
         """
         Get a vector representing the observation
         of the current player
         """
         
-        state_as_tensor = state.observation_tensor()
-        tensor_shape = self.game.observation_tensor_shape()
-        state_np = np.reshape(np.asarray(state_as_tensor), tensor_shape)
-
-        """
-        // One-hot encoding for player number.
-        // One-hot encoding for each die (max_dice_per_player_ * sides).
-        // One slot(bit) for each legal bid.
-        // One slot(bit) for calling liar. (Necessary because observations and
-        // information states need to be defined at terminals)
-        Only the previous bid of each player are reported
-        """
-
-        die_counts = np.reshape(state_np[2:2+5*6],(5,6)).sum(axis=0)
-        bets_placed = np.reshape(state_np[32:-1],(10,6))
-
-        train_tensor = np.zeros(14)
-        bets_placed_flat = bets_placed.flatten()
-        if bets_placed_flat.sum() >= 1:    # only has previous bet
-            ind = bets_placed_flat.argmax()
-            quantity = ind // 6 + 1
-            value = ind % 6 + 1
-            train_tensor[0] = quantity
-            train_tensor[value] = 1
-
-            if bets_placed_flat.sum() >= 2:    # current player has previous bet
-                bets_placed_flat[ind] = 0
-                ind2 = bets_placed_flat.argmax()
-                quantity = ind2 // 6 + 1
-                value = ind2 % 6 + 1
-                train_tensor[7] = quantity
-                train_tensor[7+value] = 1
-                bets_placed_flat[ind] = 1
-
-        train_tensor = np.concatenate([die_counts,train_tensor])
-
-        return train_tensor
-
-        # For tic-tac-toe and Connect4...
+        state_np = super().get_eval_vector(state)
 
         # Remove 1st element of 1st dimension showing empty spaces
         state_np = state_np[-1:0:-1, :, :]
@@ -205,7 +169,7 @@ class TicTacToeHandler(GameHandler):
 
         return state_np_for_cov
 
-    def show_state_on_terminal(eval_vector):
+    def show_state_on_terminal(self,eval_vector):
         """
         Show to a human
         """
@@ -222,17 +186,11 @@ class LiarsDiceHandler(GameHandler):
     def get_open_spiel_game(self):
         return pyspiel.load_game(game_type,{"numdice":5})
 
-    def get_eval_vector(state):
+    def get_eval_vector(self,state):
         """
         Get a vector representing the observation
         of the current player
-        """
-        
-        state_as_tensor = state.observation_tensor()
-        tensor_shape = game.observation_tensor_shape()
-        state_np = np.reshape(np.asarray(state_as_tensor), tensor_shape)
 
-        """
         // One-hot encoding for player number.
         // One-hot encoding for each die (max_dice_per_player_ * sides).
         // One slot(bit) for each legal bid.
@@ -240,6 +198,8 @@ class LiarsDiceHandler(GameHandler):
         // information states need to be defined at terminals)
         Only the previous bid of each player are reported
         """
+        
+        state_np = super().get_eval_vector(state)
 
         die_counts = np.reshape(state_np[2:2+5*6],(5,6)).sum(axis=0)
         bets_placed = np.reshape(state_np[32:-1],(10,6))
@@ -266,7 +226,7 @@ class LiarsDiceHandler(GameHandler):
 
         return train_tensor
 
-    def show_state_on_terminal(eval_vector):
+    def show_state_on_terminal(self,eval_vector):
         """
         Show to a human
         """
