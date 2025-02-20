@@ -1,8 +1,9 @@
 # Margam
 
-Margam = Markov Games. Reinforcement learning to train bots to play games that are Markov decision processes, e.g. Connect Four. Uses Deep Q-learning from Chapter 6 of and Policy Gradient from Chapter 9 of Deep Reinforcement Learning Hands-On [1].
+Margam = Markov Games. Reinforcement learning to train bots to play games that are Markov decision processes, e.g. Connect Four. Uses Deep Q-learning from Chapter 6 of and Policy Gradient from Chapter 9 of Deep Reinforcement Learning Hands-On [1]. Built on top of OpenSpeil [2] and Tensorflow.
 
 [1] Lapan, Maxim. Deep Reinforcement Learning Hands-On: Apply modern RL methods, with deep Q-networks, value iteration, policy gradients, TRPO, AlphaGo Zero and more. Packt Publishing Ltd, 2018.
+[2] Lanctot, Marc, et al. "OpenSpiel: A framework for reinforcement learning in games." arXiv preprint arXiv:1908.09453 (2019).
 
 Developer
 - Marcel Nunez (marcelpnunez@gmail.com)

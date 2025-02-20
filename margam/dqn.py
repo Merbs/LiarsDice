@@ -18,8 +18,8 @@ from tqdm import tqdm
 
 import pyspiel
 
-from c4lib.player import MiniMax, Player
-from c4lib.utils import (
+from margam.player import MiniMax, Player
+from margam.utils import (
     MargamError,
     get_training_and_viewing_state,
     record_episode_statistics,

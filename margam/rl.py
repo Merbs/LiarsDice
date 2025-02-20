@@ -89,7 +89,7 @@ class GameHandler(ABC):
             current_player_ind = state.current_player()
             current_player = agent if current_player_ind == player_pos else opponent
             # If the player action is legal, do it. Otherwise, do random
-            desired_action = current_player.get_move(self.game, state)
+            desired_action = current_player.get_move(state)
             if desired_action in state.legal_actions():
                 action = desired_action
             else:

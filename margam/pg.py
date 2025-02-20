@@ -18,14 +18,8 @@ from tqdm import tqdm
 
 import pyspiel
 
-from c4lib.player import ColumnSpammer, MiniMax, Player, RandomPlayer
-from c4lib.utils import MargamError
-from c4lib.utils import (
-    get_training_and_viewing_state,
-    record_episode_statistics,
-    generate_episode_transitions,
-    get_now_str,
-)
+from margam.player import ColumnSpammer, MiniMax, Player, RandomPlayer
+from margam.utils import MargamError, game_handler
 
 
 class PolicyPlayer(Player):

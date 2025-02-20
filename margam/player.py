@@ -6,33 +6,33 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from c4lib.utils import get_training_and_viewing_state
+from margam.rl import GameHandler
 
 
 class Player(ABC):
-    requires_user_input = False
 
-    def __init__(self, name=None):
+    def __init__(self, game_handler, name=None):
+        self.game_handler = game_handler
         self.name = name or "nameless"
 
     @abstractmethod
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
         pass
 
 
 class HumanPlayer(Player):
-    requires_user_input = True
 
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
 
+        print(f"\nPlayer: {self.name}")
+        print("State")
+        eval_vector = self.game_handler.get_eval_vector(state)
+        self.game_handler.show_state_on_terminal(eval_vector)
+        print("Available moves:")
+        print(state.legal_actions())
+        
         valid_input = False
         while not valid_input:
-            print(f"\nPlayer: {self.name}")
-            print("State")
-            eval_vector = get_eval_vector(game, state)
-            show_state_on_terminal(eval_vector)
-            print("Available moves:")
-            print(state.legal_actions())
             new_input = input(f"Select a move:")
 
             try:
@@ -46,19 +46,27 @@ class HumanPlayer(Player):
 
 
 class RandomPlayer(Player):
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
         return random.choice(state.legal_actions())
 
 
 class ColumnSpammer(Player):
-    def __init__(self, name=None, move_preference=0):
-        super().__init__(name)
-        self.favorite_move = move_preference
+    """
+    Rank all game actions at the beginning and
+    always play the most preferred legal action
+    """
+    def __init__(self, game_handler, name=None, move_preferences=None):
+        super().__init__(game_handler, name)
+        self.move_preferences = move_preferences
+        if move_preferences is None:
+            self.move_preferences = [i for _ in range(game_handler.game.num_distinct_actions())]
+            random.shuffle(self.move_preferences)
 
-    def get_move(self, game, state) -> int:
-        if self.favorite_move in state.legal_actions():
-            return self.favorite_move
-        return random.choice(state.legal_actions())
+    def get_move(self, state) -> int:
+        for move in self.move_preferences:
+            if move in state.legal_actions():
+                return self.favorite_move
+        raise MargamError("No preferred moves {self.move_preferences} out of legal moves: {state.legal_actions()}")
 
 
 class MiniMax(Player):
@@ -70,6 +78,8 @@ class MiniMax(Player):
     Depth 2: Blocks opponent from winning on next move
     Depth 3: Sets up forced win on next move
     etc.
+
+    TODO: don't depend upon full game
     """
 
     def __init__(self, *args, max_depth=3, **kwargs):
@@ -106,7 +116,7 @@ class MiniMax(Player):
 
         return move_value, action
 
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
         value, move = self.eval_state(
             state,
             game,

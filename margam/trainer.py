@@ -9,7 +9,7 @@ class RLTrainer(ABC):
         self.hp = None
         self.game_handler = build_game_handler(game_type)
         self.agent = None
-        self.writer = 
+        self.writer = None
         self.step = 0
         pass
 
