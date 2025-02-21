@@ -1,17 +1,19 @@
 from abc import ABC, abstractmethod
 
-from margam.rl import GameHandler, GameType
+from margam.rl import GameHandler, GameType, build_game_handler
 
 class RLTrainer(ABC):
 
     def __init__(self, game_type: str):
         # TODO: initialize class members
-        self.hp = None
+        self.hp = {}
         self.game_handler = build_game_handler(game_type)
         self.agent = None
         self.writer = None
         self.step = 0
-        pass
+        self.experience_buffer = []
+        self.reward_buffer = []
+        self.reward_buffer_vs = {}
 
     @staticmethod
     def get_now_str():
@@ -30,14 +32,18 @@ class RLTrainer(ABC):
         pass
 
     @abstractmethod
-    def train_agent(self, agent, game, state) -> int:
+    def train(self) -> int:
         """
         Train the agent
         """
         pass
 
     @staticmethod
-    def apply_temporal_difference(transitions, reward_discount, n_td=1):
+    def apply_temporal_difference(
+        transitions: List[Transition],
+        reward_discount: float,
+        n_td: int = 1
+        ):
         """
         Assign the next_state of each transition n_td steps ahead
         Add discounted rewards of next n_td-1 steps to each transition
@@ -67,35 +73,33 @@ class RLTrainer(ABC):
         return transitions_td
 
     @staticmethod
-    def record_episode_statistics(
-        writer, experience_buffer, reward_buffer, reward_buffer_vs
-    ):
+    def record_episode_statistics(self):
 
         # Record move distribution
-        move_distribution = [mr.action for mr in experience_buffer]
+        move_distribution = [mr.action for mr in self.experience_buffer]
         move_distribution = np.array(
             [move_distribution.count(i) for i in range(self.game_handler.game.num_distinct_actions())]
         )
         for i in range(self.game_handler.game.num_distinct_actions()):
             f = move_distribution[i] / sum(move_distribution)
-            writer.add_scalar(f"Action frequency: {i}", f, self.step)
+            self.writer.add_scalar(f"Action frequency: {i}", f, self.step)
 
         # Record reward
-        smoothed_reward = sum(reward_buffer) / len(reward_buffer)
-        writer.add_scalar("Average reward", smoothed_reward, self.step)
+        smoothed_reward = sum(self.reward_buffer) / len(self.reward_buffer)
+        self.writer.add_scalar("Average reward", smoothed_reward, self.step)
 
         # Record win rate overall
-        wins = sum(r == self.game_handler.game.max_utility() for r in reward_buffer)
-        ties = sum(r == 0 for r in reward_buffer)
-        losses = sum(r == self.game_handler.game.min_utility() for r in reward_buffer)
-        assert wins + ties + losses == len(reward_buffer)
-        writer.add_scalar("Win rate", wins / len(reward_buffer), self.step)
-        writer.add_scalar("Tie rate", ties / len(reward_buffer), self.step)
-        writer.add_scalar("Loss rate", losses / len(reward_buffer), self.step)
+        wins = sum(r == self.game_handler.game.max_utility() for r in self.reward_buffer)
+        ties = sum(r == 0 for r in self.reward_buffer)
+        losses = sum(r == self.game_handler.game.min_utility() for r in self.reward_buffer)
+        assert wins + ties + losses == len(self.reward_buffer)
+        self.writer.add_scalar("Win rate", wins / len(self.reward_buffer), self.step)
+        self.writer.add_scalar("Tie rate", ties / len(self.reward_buffer), self.step)
+        self.writer.add_scalar("Loss rate", losses / len(self.reward_buffer), self.step)
 
         # Record reward vs. each opponent
-        for opp_name, opp_buffer in reward_buffer_vs.items():
+        for opp_name, opp_buffer in self.reward_buffer_vs.items():
             if len(opp_buffer) == 0:
                 continue
             reward_vs = sum(opp_buffer) / len(opp_buffer)
-            writer.add_scalar(f"reward-vs-{opp_name}", reward_vs, self.step)
+            self.writer.add_scalar(f"reward-vs-{opp_name}", reward_vs, self.step)
