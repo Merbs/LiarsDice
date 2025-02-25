@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from margam.rl import GameHandler, GameType, build_game_handler
+
+class RLAlgorithm:
+    DQN = "dqn"
+    PG = "pg"
 
 class RLTrainer(ABC):
 
     def __init__(self, game_type: str):
-        # TODO: initialize class members
         self.hp = {}
         self.game_handler = build_game_handler(game_type)
         self.agent = None
@@ -31,11 +35,27 @@ class RLTrainer(ABC):
         """
         pass
 
-    @abstractmethod
-    def train(self) -> int:
+    
+    def train(self):
         """
         Train the agent
         """
+        # Create agent
+        if self.agent is None:
+            self.initiaize_agent()
+
+        # Open writer
+        self.writer = SummaryWriter(f"runs/{agent.name}")
+
+
+        try:
+            self._train()
+        finally:
+            self.writer.close()
+            self.writer = None
+
+    @abstractmethod
+    def _train(self):
         pass
 
     @staticmethod
@@ -72,7 +92,6 @@ class RLTrainer(ABC):
             transitions_td.append(td_tsn)
         return transitions_td
 
-    @staticmethod
     def record_episode_statistics(self):
 
         # Record move distribution

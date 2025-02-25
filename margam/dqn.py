@@ -223,7 +223,7 @@ class DQNTrainer(RLTrainer):
             target_network.set_weights(agent.model.get_weights())
 
 
-    def train(game_type, hp):
+    def _train(game_type, hp):
         """
         Perform the training loop that runs episodes
         and uses the data to train a DQN player
