@@ -58,7 +58,7 @@ class DQNPlayer(Player):
 
         return max_q_ind
 
-    def initialize_model(game_type, hp, show_model=True):
+    def initialize_model(game_type, dueling=True, show_model=True):
         """
         Construct neural network used by agent
         """
@@ -67,42 +67,42 @@ class DQNPlayer(Player):
         state_np_for_cov, human_view_state = get_training_and_viewing_state(game, state)
         nn_input = keras.Input(shape=state_np_for_cov.shape)
 
-        if game_type == "tic_tac_toe":
-            q_values = self.initialize_tic_tac_toe_model()
-        elif game_type == "connect_four":
-            q_values = self.initialize_connect_four_model()
+        if self.game_handler.game_type == GameType.TIC_TAC_TOE:
+            q_values = self.initialize_tic_tac_toe_model(dueling=dueling)
+        elif self.game_handler. == GameType.CONNECT_FOUR:
+            q_values = self.initialize_connect_four_model(dueling=dueling)
         else:
-            raise MargamError(f"Unrecognized game type: {game_type}")
+            raise MargamError(f"{game_type} not implemented for DQN")
 
         model = keras.Model(inputs=nn_input, outputs=q_values, name="DQN-model")
         if show_model:
             model.summary()
         return model
 
-    def initialize_tic_tac_toe_model(self):
+    def initialize_tic_tac_toe_model(self,nn_input,dueling=True):
         input_flat = layers.Flatten()(nn_input)
         x = layers.Dense(32, activation="relu")(input_flat)
         q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
 
-        # Deuling DQN adds a second column to the neural net that
+        # Dueling DQN adds a second column to the neural net that
         # computes state value V(s) and interprets the Q
         # values as advantage of that action in that state
         # Q(s,a) = A(s,a) + V(s)
         # Final output is the same so it is interoperable with vanilla DQN
-        if hp["DEULING_DQN"]:
+        if dueling:
             x_sv = layers.Dense(32, activation="relu")(input_flat)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (
                 q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
             )
 
-    def initialize_connect_four_model(self):
+    def initialize_connect_four_model(self,nn_input,dueling=True):
         x = layers.Conv2D(64,4)(nn_input)
         x = layers.MaxPooling2D(pool_size=(2,2))(x)
         x = layers.Flatten()(x)
         x = layers.Dense(64,activation="relu")(x)
         q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
-        if hp["DEULING_DQN"]:
+        if dueling:
             x_sv = layers.Dense(32, activation="relu")(x)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (

@@ -44,6 +44,10 @@ class RLTrainer(ABC):
         if self.agent is None:
             self.initiaize_agent()
 
+        # Make collateral folder and save hyperparameters
+        with open(f"saved-models/{agent.name}.yaml", "w") as f:
+            yaml.dump(hp, f)
+
         # Open writer
         self.writer = SummaryWriter(f"runs/{agent.name}")
 
