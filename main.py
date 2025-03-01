@@ -54,22 +54,11 @@ def play(game_type, opponent, depth, model, second):
         opponent = HumanPlayer(gh, "Opponent")
     elif opponent == "pg":
         from margam.train_pg import PolicyPlayer
-        from keras.models import load_model
-
-        opponent = PolicyPlayer(name="PG")
-        if game_type == "liars_dice":
-            from margam.train_pg import initialize_model
-            opponent.model = initialize_model(
-                game_type, {"ACTOR_CRITIC":False}, show_model=True)
-        else:
-            opponent.model = load_model(model)
+        opponent = PolicyPlayer(gh, name="PG", model=model)
         opponent.model.summary()
     elif opponent == "dqn":
         from margam.train_dqn import DQNPlayer
-        from keras.models import load_model
-
-        opponent = DQNPlayer(name="DQN")
-        opponent.model = load_model(model)
+        opponent = DQNPlayer(gh, name="DQN", model=model)
         opponent.model.summary()
 
     players = [human, opponent]

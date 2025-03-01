@@ -25,8 +25,8 @@ from margam.utils import MargamError, game_handler
 class PolicyPlayer(Player):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.model = None
+        super().__init__(*args, model = None, **kwargs)
+        self.model = load_model(model) if model else self.initialize_model()
 
     def has_actor_critic(self):
         len(self.model.outputs) == 2
@@ -44,87 +44,75 @@ class PolicyPlayer(Player):
         ]
         return selected_move
 
-class ConservativePlayer(Player):
+    def initialize_model(self, actor_critic = False, show_model=True):
+        eg_state = self.game_handler.game.new_initial_state()
+        eg_input = self.game_handler.get_eval_vector(eg_state)
+        nn_input = keras.Input(shape=eg_input.shape)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        if self.game_handler.game_type == GameType.TIC_TAC_TOE:
+            nn_outputs = self.initialize_tic_tac_toe_model(nn_input,actor_critic=actor_critic)
+        elif self.game_handler.game_type == GameType.CONNECT_FOUR:
+            nn_outputs = self.initialize_connect_four_model(nn_input,actor_critic=actor_critic)
+        elif self.game_handler.game_type == GameType.LIARS_DICE:
+            nn_outputs = self.initialize_liars_dice_model(nn_input,actor_critic=actor_critic)
+        else:
+            # Provide default model?
+            raise MargamError(f"{self.game_handler.game_type} not implemented")
+        
+        model = keras.Model(inputs=nn_input, outputs=nn_outputs, name="policy-model")
 
-    def get_move(self, game, state) -> int:
-        """
-        Call with 33% probability. Otherwise take
-        most conservative bet
-        """
-        action_options = state.legal_actions()
-        if np.random.uniform(low=0.0, high=1.0) < 0.33:
-            return action_options[-1]
-        return action_options[0]
+        if show_model:
+            model.summary()
 
+        return model
 
-def initialize_model(self, actor_critic = False, show_model=True):
-    game = pyspiel.load_game(game_type,{"numdice":5})
-    state = game.new_initial_state()
-    #state_np_for_cov, human_view_state = get_training_and_viewing_state(game, state)
-    nn_input = keras.Input(shape=(20,))
+    def initialize_tic_tac_toe_model(nn_input,actor_critic=False):
 
-    if self.game_handler.game_type == GameType.TIC_TAC_TOE:
-        pass
-    elif self.game_handler.game_type == GameType.CONNECT_FOUR:
-        pass
-    elif self.game_handler.game_type == GameType.LIARS_DICE:
-        pass
-    else:
-        # Provide default model?
-        raise MargamError(f"{self.game_handler.game_type} not implemented")
-    
+        input_flat = layers.Flatten()(nn_input)
+        model_trunk_f = input_flat
 
-    input_flat = layers.Flatten()(nn_input)
-    model_trunk_f = input_flat
+        x = layers.Dense(32, activation="relu")(model_trunk_f)
+        logits_output = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(
+            x
+        )
+        nn_outputs = logits_output
 
-    x = layers.Dense(32, activation="relu")(model_trunk_f)
-    logits_output = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(
-        x
-    )
-    nn_outputs = logits_output
+        if actor_critic:
+            x = layers.Dense(64, activation="relu")(model_trunk_f)
+            state_value_output = layers.Dense(1, activation="linear")(x)
+            nn_outputs = [logits_output, state_value_output]
 
-    if actor_critic:
-        x = layers.Dense(64, activation="relu")(model_trunk_f)
-        state_value_output = layers.Dense(1, activation="linear")(x)
-        nn_outputs = [logits_output, state_value_output]
+        return nn_outputs
 
+    def initialize_connect_four_model(nn_input):
+        x = layers.Conv2D(64,4)(nn_input)
+        x = layers.MaxPooling2D(pool_size=(2,2))(x)
+        model_trunk_f = layers.Flatten()(x)
+        x = layers.Dense(64,activation="relu")(model_trunk_f)
+        logits_output = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(x)
+        nn_outputs = logits_output
 
-    x = layers.Conv2D(64,4)(nn_input)
-    x = layers.MaxPooling2D(pool_size=(2,2))(x)
-    model_trunk_f = layers.Flatten()(x)
-    x = layers.Dense(64,activation="relu")(model_trunk_f)
-    logits_output = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
-    nn_outputs = logits_output
+        if actor_critic:
+            x = layers.Dense(64, activation="relu")(model_trunk_f)
+            state_value_output = layers.Dense(1, activation="linear")(x)
+            nn_outputs = [logits_output, state_value_output]
 
-    if actor_critic:
-        x = layers.Dense(64, activation="relu")(model_trunk_f)
-        state_value_output = layers.Dense(1, activation="linear")(x)
-        nn_outputs = [logits_output, state_value_output]
+        return nn_outputs
 
+    def initialize_liars_dice_model(nn_input):
+        model_trunk_f = layers.Flatten()(nn_input)
+        x = layers.Dense(64,activation="relu")(model_trunk_f)
+        logits_output = layers.Dense(
+            self.game_handler.game.num_distinct_actions(), activation="linear"
+            )(x)
+        nn_outputs = logits_output
 
-    model_trunk_f = layers.Flatten()(nn_input)
-    x = layers.Dense(64,activation="relu")(model_trunk_f)
-    logits_output = layers.Dense(
-        61, activation="linear"
-        )(x)
-    nn_outputs = logits_output
+        if actor_critic:
+            x = layers.Dense(64, activation="relu")(model_trunk_f)
+            state_value_output = layers.Dense(1, activation="linear")(x)
+            nn_outputs = [logits_output, state_value_output]
 
-    if actor_critic:
-        x = layers.Dense(64, activation="relu")(model_trunk_f)
-        state_value_output = layers.Dense(1, activation="linear")(x)
-        nn_outputs = [logits_output, state_value_output]
-
-    
-
-    model = keras.Model(inputs=nn_input, outputs=nn_outputs, name="policy-model")
-
-    if show_model:
-        model.summary()
-
-    return model
+        return nn_outputs
 
 class PolicyGradientTrainer(RLTrainer):
 
@@ -132,10 +120,6 @@ class PolicyGradientTrainer(RLTrainer):
         self.agent = ConservativePlayer()
         self.agent.model = self.initialize_model()
         return self.agent
-
-    
-
-
 
     def _train(self):
 

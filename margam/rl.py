@@ -86,26 +86,27 @@ class GameHandler(ABC):
                 action_list, prob_list = zip(*outcomes_with_probs)
                 action = np.random.choice(action_list, p=prob_list)
                 state.apply_action(action)
+                continue
+
+            current_player_ind = state.current_player()
+            current_player = players[current_player_ind]
+            # If the player action is legal, do it. Otherwise, do random
+            desired_action = current_player.get_move(state)
+            if desired_action in state.legal_actions():
+                action = desired_action
             else:
-                current_player_ind = state.current_player()
-                current_player = players[current_player_ind]
-                # If the player action is legal, do it. Otherwise, do random
-                desired_action = current_player.get_move(state)
-                if desired_action in state.legal_actions():
-                    action = desired_action
-                else:
-                    action = random.choice(state.legal_actions())                
+                action = random.choice(state.legal_actions())                
 
-                legal_actions = [int(i in state.legal_actions()) for i in range(self.game.num_distinct_actions())]
-                state_for_cov = self.get_eval_vector(state)
-                new_transition = Transition(
-                    state=state_for_cov,
-                    action=action,
-                    legal_actions=legal_actions,
-                )
-                agent_transitions[current_player_ind].append(new_transition)
+            legal_actions = [int(i in state.legal_actions()) for i in range(self.game.num_distinct_actions())]
+            state_for_cov = self.get_eval_vector(state)
+            new_transition = Transition(
+                state=state_for_cov,
+                action=action,
+                legal_actions=legal_actions,
+            )
+            agent_transitions[current_player_ind].append(new_transition)
 
-                state.apply_action(action)
+            state.apply_action(action)
 
             # Update rewards for last action taken by each player
             # since these may be updated after another player
@@ -185,11 +186,12 @@ class TicTacToeHandler(GameHandler):
 
 class LiarsDiceHandler(GameHandler):
 
-    def __init__(self):
+    def __init__(self, n_dice=5):
         super().__init__(GameType.LIARS_DICE)
+        self.n_dice = n_dice
 
     def get_open_spiel_game(self):
-        return pyspiel.load_game(self.game_type.value,{"numdice":5})
+        return pyspiel.load_game(self.game_type.value,{"numdice":self.n_dice})
 
     def get_eval_vector(self,state):
         """

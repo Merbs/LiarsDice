@@ -58,13 +58,6 @@ class DQNPlayer(Player):
 
         return max_q_ind
 
-class DQNTrainer(RLTrainer):
-
-    def sample_experience_buffer(buffer, batch_size):
-        indices = np.random.choice(len(buffer), batch_size, replace=False)
-        return [buffer[idx] for idx in indices]
-
-
     def initialize_model(game_type, hp, show_model=True):
         """
         Construct neural network used by agent
@@ -75,33 +68,9 @@ class DQNTrainer(RLTrainer):
         nn_input = keras.Input(shape=state_np_for_cov.shape)
 
         if game_type == "tic_tac_toe":
-            input_flat = layers.Flatten()(nn_input)
-            x = layers.Dense(32, activation="relu")(input_flat)
-            q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
-
-            # Deuling DQN adds a second column to the neural net that
-            # computes state value V(s) and interprets the Q
-            # values as advantage of that action in that state
-            # Q(s,a) = A(s,a) + V(s)
-            # Final output is the same so it is interoperable with vanilla DQN
-            if hp["DEULING_DQN"]:
-                x_sv = layers.Dense(32, activation="relu")(input_flat)
-                sv = layers.Dense(1, activation="linear")(x_sv)
-                q_values = (
-                    q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
-                )
+            q_values = self.initialize_tic_tac_toe_model()
         elif game_type == "connect_four":
-            x = layers.Conv2D(64,4)(nn_input)
-            x = layers.MaxPooling2D(pool_size=(2,2))(x)
-            x = layers.Flatten()(x)
-            x = layers.Dense(64,activation="relu")(x)
-            q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
-            if hp["DEULING_DQN"]:
-                x_sv = layers.Dense(32, activation="relu")(x)
-                sv = layers.Dense(1, activation="linear")(x_sv)
-                q_values = (
-                    q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
-                )
+            q_values = self.initialize_connect_four_model()
         else:
             raise MargamError(f"Unrecognized game type: {game_type}")
 
@@ -110,6 +79,41 @@ class DQNTrainer(RLTrainer):
             model.summary()
         return model
 
+    def initialize_tic_tac_toe_model(self):
+        input_flat = layers.Flatten()(nn_input)
+        x = layers.Dense(32, activation="relu")(input_flat)
+        q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
+
+        # Deuling DQN adds a second column to the neural net that
+        # computes state value V(s) and interprets the Q
+        # values as advantage of that action in that state
+        # Q(s,a) = A(s,a) + V(s)
+        # Final output is the same so it is interoperable with vanilla DQN
+        if hp["DEULING_DQN"]:
+            x_sv = layers.Dense(32, activation="relu")(input_flat)
+            sv = layers.Dense(1, activation="linear")(x_sv)
+            q_values = (
+                q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
+            )
+
+    def initialize_connect_four_model(self):
+        x = layers.Conv2D(64,4)(nn_input)
+        x = layers.MaxPooling2D(pool_size=(2,2))(x)
+        x = layers.Flatten()(x)
+        x = layers.Dense(64,activation="relu")(x)
+        q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
+        if hp["DEULING_DQN"]:
+            x_sv = layers.Dense(32, activation="relu")(x)
+            sv = layers.Dense(1, activation="linear")(x_sv)
+            q_values = (
+                q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
+            )
+
+class DQNTrainer(RLTrainer):
+
+    def sample_experience_buffer(buffer, batch_size):
+        indices = np.random.choice(len(buffer), batch_size, replace=False)
+        return [buffer[idx] for idx in indices]
 
     def update_neural_network(
         step, training_data, agent, target_network, hp, optimizer, mse_loss, writer

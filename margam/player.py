@@ -123,3 +123,21 @@ class MiniMax(Player):
             orig_player=state.current_player(),
         )
         return move
+
+class ConservativePlayer(Player):
+    """
+    For liars dice
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get_move(self, game, state) -> int:
+        """
+        Call with 33% probability. Otherwise take
+        most conservative bet
+        """
+        action_options = state.legal_actions()
+        if np.random.uniform(low=0.0, high=1.0) < 0.33:
+            return action_options[-1]
+        return action_options[0]
