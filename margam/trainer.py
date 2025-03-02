@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
+from pathlib import Path
 
 from margam.rl import GameHandler, GameType, build_game_handler
 
@@ -14,7 +15,7 @@ class RLTrainer(ABC):
     rotating opponents
     """
 
-    def __init__(self, game_type: str):
+    def __init__(self, game_type: str, save_folder=None):
         self.hp = {}
         self.game_handler = build_game_handler(game_type)
         self.agent = None
@@ -27,6 +28,7 @@ class RLTrainer(ABC):
         self.reward_buffer_vs = {}
         self.best_reward = 0
         self.name = self.get_unique_name()
+        self.save_folder = Path(save_folder or self.name)
 
     @staticmethod
     def get_now_str():
@@ -83,6 +85,10 @@ class RLTrainer(ABC):
     def _train(self):
         pass
 
+    def load_hyperparameters(self, hp):
+        for key, value in hp.items():
+            setattr(self,key,value)
+
     @staticmethod
     def apply_temporal_difference(
         transitions: List[Transition],
@@ -116,6 +122,18 @@ class RLTrainer(ABC):
 
             transitions_td.append(td_tsn)
         return transitions_td
+
+    def save_checkpoint_model(self):
+        """
+        Save model if we have a historically best result
+        """
+        smoothed_reward = sum(reward_buffer) / len(reward_buffer)
+        if (
+            len(reward_buffer) == hp["REWARD_BUFFER_SIZE"]
+            and smoothed_reward > best_reward + hp["SAVE_MODEL_REL_THRESHOLD"]
+        ):
+            agent.model.save(f"{self.save_folder}/{agent.name}.keras")
+            best_reward = smoothed_reward
 
     def record_episode_statistics(self):
 

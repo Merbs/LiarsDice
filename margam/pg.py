@@ -157,18 +157,6 @@ class PolicyGradientTrainer(RLTrainer):
         while self.episode_ind <= hp["MAX_EPISODES"]:
             self.execute_episodic_training_step()
 
-    def save_checkpoint_model(self):
-        """
-        Save model if we have a historically best result
-        """
-        smoothed_reward = sum(reward_buffer) / len(reward_buffer)
-        if (
-            len(reward_buffer) == hp["REWARD_BUFFER_SIZE"]
-            and smoothed_reward > best_reward + hp["SAVE_MODEL_REL_THRESHOLD"]
-        ):
-            agent.model.save(f"saved-models/{agent.name}.keras")
-            best_reward = smoothed_reward
-
     def generate_episode_transitions(self):
         agent_transitions = super().generate_episode_transitions()
         agent_transitions = self.apply_temporal_difference(
