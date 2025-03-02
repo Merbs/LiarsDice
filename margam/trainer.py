@@ -129,8 +129,8 @@ class RLTrainer(ABC):
         """
         smoothed_reward = sum(reward_buffer) / len(reward_buffer)
         if (
-            len(reward_buffer) == hp["REWARD_BUFFER_SIZE"]
-            and smoothed_reward > best_reward + hp["SAVE_MODEL_REL_THRESHOLD"]
+            len(reward_buffer) == self.REWARD_BUFFER_SIZE
+            and smoothed_reward > best_reward + self.SAVE_MODEL_REL_THRESHOLD
         ):
             agent.model.save(f"{self.save_folder}/{agent.name}.keras")
             best_reward = smoothed_reward

@@ -127,44 +127,44 @@ class PolicyGradientTrainer(RLTrainer):
         opponents = [ConservativePlayer(name="Conservative")]
 
     def initialize_training_stats(self):
-        reward_buffer = deque(maxlen=hp["REWARD_BUFFER_SIZE"])
+        reward_buffer = deque(maxlen=self.REWARD_BUFFER_SIZE)
         reward_buffer_vs = {}
         for opp in opponents:
             reward_buffer_vs[opp.name] = deque(
-                maxlen=hp["REWARD_BUFFER_SIZE"] // len(opponents)
+                maxlen=self.REWARD_BUFFER_SIZE // len(opponents)
             )
 
-        optimizer = Adam(learning_rate=hp["LEARNING_RATE"])
+        optimizer = Adam(learning_rate=self.LEARNING_RATE)
         mse_loss = MeanSquaredError()
 
         epsisode_transitions = []
-        experience_buffer = deque(maxlen=hp["REPLAY_SIZE"])
+        experience_buffer = deque(maxlen=self.REPLAY_SIZE)
 
-        best_reward = hp["SAVE_MODEL_ABS_THRESHOLD"]
+        best_reward = self.SAVE_MODEL_ABS_THRESHOLD
         episode_ind = 0  # Number of full episodes completed
         step = 0  # Number of agent actions taken
 
     def _train(self):
 
         # Cannot do tempral differencing without critic
-        if not hp["ACTOR_CRITIC"]:
-            hp["N_TD"] = -1
+        if not self.ACTOR_CRITIC:
+            self.N_TD = -1
 
         self.initialize_players()
         self.initialize_training_stats()
         
 
-        while self.episode_ind <= hp["MAX_EPISODES"]:
+        while self.episode_ind <= self.MAX_EPISODES:
             self.execute_episodic_training_step()
 
     def generate_episode_transitions(self):
         agent_transitions = super().generate_episode_transitions()
         agent_transitions = self.apply_temporal_difference(
             agent_transitions,
-            hp["DISCOUNT_RATE"],
-            n_td=hp["N_TD"],
+            self.DISCOUNT_RATE,
+            n_td=self.N_TD,
         )
-        if hp["USE_SYMMETRY"]:
+        if self.USE_SYMMETRY:
             agent_transitions = add_symmetries(agent_transitions)
         self.episode_ind += 1
         return agent_transitions
@@ -177,13 +177,13 @@ class PolicyGradientTrainer(RLTrainer):
         reward_buffer.append(agent_transitions[-1].reward)
         reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
         experience_buffer += agent_transitions
-        if episode_ind % hp["RECORD_EPISODES"] == 0:
+        if episode_ind % self.RECORD_EPISODES == 0:
             self.record_episode_statistics()
 
         self.save_checkpoint_model()
 
         # Don't start training the network until we have enough data
-        if len(epsisode_transitions) >= hp["BATCH_N_EPISODES"]:
+        if len(epsisode_transitions) >= self.BATCH_N_EPISODES:
             self.update_model()
             epsisode_transitions.clear()
 
@@ -195,12 +195,12 @@ class PolicyGradientTrainer(RLTrainer):
 
         training_data = [t for et in epsisode_transitions for t in et]
         record_histograms = (
-            step // hp["RECORD_HISTOGRAMS"]
-            != (step - len(training_data)) // hp["RECORD_HISTOGRAMS"]
+            step // self.RECORD_HISTOGRAMS
+            != (step - len(training_data)) // self.RECORD_HISTOGRAMS
         )
         record_scalars = (
-            step // hp["RECORD_SCALARS"]
-            != (step - len(training_data)) // hp["RECORD_SCALARS"]
+            step // self.RECORD_SCALARS
+            != (step - len(training_data)) // self.RECORD_SCALARS
         )
 
         # Unpack training data
@@ -222,10 +222,10 @@ class PolicyGradientTrainer(RLTrainer):
             logits = tf.multiply(action_legality,logits) + tf.multiply((1-action_legality),large_neg_logits)
 
 
-            if hp["ACTOR_CRITIC"]:
+            if self.ACTOR_CRITIC:
 
                 # Update rewards with value of future state
-                if hp["N_TD"] != -1:
+                if self.N_TD != -1:
 
                     # Bellman equation part
                     # Take maximum Q(s',a') of board states we end up in
@@ -245,7 +245,7 @@ class PolicyGradientTrainer(RLTrainer):
                     _, resulting_state_values = agent.model(resulting_boards)
                     resulting_state_values = resulting_state_values[:, 0]
                     rewards = rewards + (
-                        hp["DISCOUNT_RATE"] ** hp["N_TD"]
+                        self.DISCOUNT_RATE ** self.N_TD
                     ) * np.multiply(non_terminal_states, resulting_state_values)
 
                 logits, state_values = logits
@@ -257,7 +257,7 @@ class PolicyGradientTrainer(RLTrainer):
             masked_log_probs = tf.multiply(move_log_probs, selected_move_mask)
             selected_log_probs = tf.reduce_sum(masked_log_probs, 1)
             obs_advantage = rewards
-            if hp["ACTOR_CRITIC"]:
+            if self.ACTOR_CRITIC:
                 obs_advantage = rewards - tf.stop_gradient(state_values)
             expectation_loss = -tf.tensordot(
                 obs_advantage, selected_log_probs, axes=1
@@ -268,12 +268,12 @@ class PolicyGradientTrainer(RLTrainer):
             entropy_components = tf.multiply(move_probs, move_log_probs)
             entropy_each_state = -tf.reduce_sum(entropy_components, 1)
             entropy = tf.reduce_mean(entropy_each_state)
-            entropy_loss = -hp["ENTROPY_BETA"] * entropy
+            entropy_loss = -self.ENTROPY_BETA * entropy
 
             # Sum the loss contributions
             loss = expectation_loss + entropy_loss
-            if hp["ACTOR_CRITIC"]:
-                loss += state_loss * hp["STATE_VALUE_BETA"]
+            if self.ACTOR_CRITIC:
+                loss += state_loss * self.STATE_VALUE_BETA
                 if record_scalars:
                     writer.add_scalar("state-loss", state_loss.numpy(), step)
 
@@ -298,7 +298,7 @@ class PolicyGradientTrainer(RLTrainer):
         # calc KL-div
         if record_scalars:
             new_logits_v = agent.model.predict_on_batch(x_train)
-            if hp["ACTOR_CRITIC"]:
+            if self.ACTOR_CRITIC:
                 new_logits_v, _ = new_logits_v
             new_prob_v = tf.nn.softmax(new_logits_v)
             KL_EPSILON = 1e-7

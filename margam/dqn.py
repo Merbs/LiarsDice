@@ -147,7 +147,7 @@ class DQNTrainer(RLTrainer):
         # Double DQN - Use on policy network to choose best move
         #   and target network to evaluate the Q-value
         resulting_board_q_target = self.target_network.predict_on_batch(resulting_boards)
-        if hp["DOUBLE_DQN"]:
+        if self.DOUBLE_DQN:
             resulting_board_q_on_policy = agent.model.predict_on_batch(resulting_boards)
             max_move_inds_on_policy = resulting_board_q_on_policy.argmax(axis=1)
             on_policy_move_mask = tf.one_hot(
@@ -163,7 +163,7 @@ class DQNTrainer(RLTrainer):
 
         rewards = np.array([trsn.reward for trsn in training_data])
         q_to_train_single_values = rewards + (
-            hp["DISCOUNT_RATE"] ** hp["N_TD"]
+            self.DISCOUNT_RATE ** self.N_TD
         ) * np.multiply(non_terminal_states, max_qs)
 
         # Needed for our mask
@@ -187,7 +187,7 @@ class DQNTrainer(RLTrainer):
 
         # Record prediction error
         writer.add_scalar("loss", loss_value.numpy(), step)
-        if step % hp["RECORD_HISTOGRAMS"] == 0:
+        if step % self.RECORD_HISTOGRAMS == 0:
             writer.add_histogram("q-predicted", predicted_q_values.numpy(), step)
             writer.add_histogram("q-train", q_to_train_single_values, step)
             writer.add_histogram("q-error", q_prediction_errors.numpy(), step)
@@ -211,10 +211,10 @@ class DQNTrainer(RLTrainer):
             writer.add_histogram("weight-bias-updates", weights_and_biases_delta, step)
 
         # Update policy
-        if hp["RECORD_HISTOGRAMS"] % hp["SYNC_TARGET_NETWORK"] != 0:
+        if self.RECORD_HISTOGRAMS % self.SYNC_TARGET_NETWORK != 0:
             raise MargamError("SYNC_TARGET_NETWORK must divide RECORD_HISTOGRAMS")
-        if step % hp["SYNC_TARGET_NETWORK"] == 0:
-            if step % hp["RECORD_HISTOGRAMS"] == 0:
+        if step % self.SYNC_TARGET_NETWORK == 0:
+            if step % self.RECORD_HISTOGRAMS == 0:
                 weights_and_biases_flat = np.concatenate(
                     [v.numpy().flatten() for v in agent.model.variables]
                 )
@@ -247,29 +247,29 @@ class DQNTrainer(RLTrainer):
 
         opponents = [MiniMax(name="Minnie", max_depth=1)]
 
-        experience_buffer = deque(maxlen=hp["REPLAY_SIZE"])
-        reward_buffer = deque(maxlen=hp["REWARD_BUFFER_SIZE"])
+        experience_buffer = deque(maxlen=self.REPLAY_SIZE)
+        reward_buffer = deque(maxlen=self.REWARD_BUFFER_SIZE)
         reward_buffer_vs = {}
         for opp in opponents:
             reward_buffer_vs[opp.name] = deque(
-                maxlen=hp["REWARD_BUFFER_SIZE"] // len(opponents)
+                maxlen=self.REWARD_BUFFER_SIZE // len(opponents)
             )
 
         mse_loss = MeanSquaredError()
-        optimizer = Adam(learning_rate=hp["LEARNING_RATE"])
+        optimizer = Adam(learning_rate=self.LEARNING_RATE)
 
         writer = SummaryWriter(f"runs/{agent.name}")
-        best_reward = hp["SAVE_MODEL_ABS_THRESHOLD"]
+        best_reward = self.SAVE_MODEL_ABS_THRESHOLD
         episode_ind = 0  # Number of full episodes completed
         step = 0  # Number of agent actions taken
         while True:
 
-            if episode_ind > hp["MAX_EPISODES"]:
+            if episode_ind > self.MAX_EPISODES:
                 break
 
             agent.random_weight = max(
-                hp["EPSILON_FINAL"],
-                hp["EPSILON_START"] - step / hp["EPSILON_DECAY_LAST_FRAME"],
+                self.EPSILON_FINAL,
+                self.EPSILON_START - step / self.EPSILON_DECAY_LAST_FRAME,
             )
 
             opponent = opponents[(episode_ind // 2) % len(opponents)]
@@ -277,26 +277,26 @@ class DQNTrainer(RLTrainer):
             agent_transitions = generate_episode_transitions(
                 game_type, hp, agent, opponent, player_pos
             )
-            if hp["USE_SYMMETRY"]:
+            if self.USE_SYMMETRY:
                 agent_transitions = add_symmetries(agent_transitions)
             episode_ind += 1
 
             experience_buffer += agent_transitions
             reward_buffer.append(agent_transitions[-1].reward)
             reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
-            if episode_ind % hp["RECORD_EPISODES"] == 0:
+            if episode_ind % self.RECORD_EPISODES == 0:
                 record_episode_statistics(
                     writer, game, step, experience_buffer, reward_buffer, reward_buffer_vs
                 )
 
-            if agent.random_weight > hp["EPSILON_FINAL"]:
+            if agent.random_weight > self.EPSILON_FINAL:
                 writer.add_scalar("epsilon", agent.random_weight, step)
 
             # Save model if we have a historically best result
             smoothed_reward = sum(reward_buffer) / len(reward_buffer)
             if (
-                len(reward_buffer) == hp["REWARD_BUFFER_SIZE"]
-                and smoothed_reward > best_reward + hp["SAVE_MODEL_REL_THRESHOLD"]
+                len(reward_buffer) == self.REWARD_BUFFER_SIZE
+                and smoothed_reward > best_reward + self.SAVE_MODEL_REL_THRESHOLD
             ):
                 agent.model.save(f"saved-models/{agent.name}.keras")
                 best_reward = smoothed_reward
@@ -306,11 +306,11 @@ class DQNTrainer(RLTrainer):
                 experience_buffer.append(transition)
 
                 # Don't start training the network until we have enough data
-                if len(experience_buffer) < hp["REPLAY_START_SIZE"]:
+                if len(experience_buffer) < self.REPLAY_START_SIZE:
                     continue
 
                 # Get training data
-                training_data = self.sample_experience_buffer(hp["BATCH_SIZE"])
+                training_data = self.sample_experience_buffer(self.BATCH_SIZE)
 
                 update_neural_network(
                     step,
