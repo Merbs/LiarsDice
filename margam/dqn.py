@@ -112,6 +112,10 @@ class DQNTrainer(RLTrainer):
         super.__init__(*args,**kwargs)
         self.target_network = None
 
+    @property
+    def algotype(self):
+        return "Deep Q Network"
+
     def get_unique_name(self) -> str:
         return f"DQN-{self.game_handler.game_type.value}-{self.get_now_str()}"
 
@@ -186,8 +190,9 @@ class DQNTrainer(RLTrainer):
         optimizer.apply_gradients(zip(grads, agent.model.trainable_variables))
 
         # Record prediction error
-        writer.add_scalar("loss", loss_value.numpy(), step)
-        if step % self.RECORD_HISTOGRAMS == 0:
+        if writer:
+            writer.add_scalar("loss", loss_value.numpy(), step)
+        if writer and step % self.RECORD_HISTOGRAMS == 0:
             writer.add_histogram("q-predicted", predicted_q_values.numpy(), step)
             writer.add_histogram("q-train", q_to_train_single_values, step)
             writer.add_histogram("q-error", q_prediction_errors.numpy(), step)
@@ -211,8 +216,6 @@ class DQNTrainer(RLTrainer):
             writer.add_histogram("weight-bias-updates", weights_and_biases_delta, step)
 
         # Update policy
-        if self.RECORD_HISTOGRAMS % self.SYNC_TARGET_NETWORK != 0:
-            raise MargamError("SYNC_TARGET_NETWORK must divide RECORD_HISTOGRAMS")
         if step % self.SYNC_TARGET_NETWORK == 0:
             if step % self.RECORD_HISTOGRAMS == 0:
                 weights_and_biases_flat = np.concatenate(
@@ -224,9 +227,10 @@ class DQNTrainer(RLTrainer):
                 target_parameter_updates = (
                     weights_and_biases_flat - weights_and_biases_target
                 )
-                writer.add_histogram(
-                    "target parameter updates", target_parameter_updates, step
-                )
+                if writer:
+                    writer.add_histogram(
+                        "target parameter updates", target_parameter_updates, step
+                    )
 
             self.target_network.set_weights(agent.model.get_weights())
 
@@ -236,6 +240,9 @@ class DQNTrainer(RLTrainer):
         Perform the training loop that runs episodes
         and uses the data to train a DQN player
         """
+
+        if self.RECORD_HISTOGRAMS % self.SYNC_TARGET_NETWORK != 0:
+            raise MargamError("SYNC_TARGET_NETWORK must divide RECORD_HISTOGRAMS")
 
         # Intialize agent and model
         agent = DQNPlayer(name=f"DQN-{get_now_str()}")
@@ -258,7 +265,7 @@ class DQNTrainer(RLTrainer):
         mse_loss = MeanSquaredError()
         optimizer = Adam(learning_rate=self.LEARNING_RATE)
 
-        writer = SummaryWriter(f"runs/{agent.name}")
+        writer = SummaryWriter(f"runs/{agent.name}")    # inject this
         best_reward = self.SAVE_MODEL_ABS_THRESHOLD
         episode_ind = 0  # Number of full episodes completed
         step = 0  # Number of agent actions taken
@@ -284,12 +291,12 @@ class DQNTrainer(RLTrainer):
             experience_buffer += agent_transitions
             reward_buffer.append(agent_transitions[-1].reward)
             reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
-            if episode_ind % self.RECORD_EPISODES == 0:
+            if self.writer and episode_ind % self.RECORD_EPISODES == 0:
                 record_episode_statistics(
                     writer, game, step, experience_buffer, reward_buffer, reward_buffer_vs
                 )
 
-            if agent.random_weight > self.EPSILON_FINAL:
+            if self.writer and agent.random_weight > self.EPSILON_FINAL:
                 writer.add_scalar("epsilon", agent.random_weight, step)
 
             # Save model if we have a historically best result
@@ -312,14 +319,8 @@ class DQNTrainer(RLTrainer):
                 # Get training data
                 training_data = self.sample_experience_buffer(self.BATCH_SIZE)
 
-                update_neural_network(
-                    step,
+                self.update_neural_network(
                     training_data,
-                    agent,
-                    hp,
                     optimizer,
                     mse_loss,
-                    writer,
                 )
-
-        writer.close()

@@ -71,41 +71,39 @@ def play(game_type, opponent, depth, model, second):
 
 
 @main.command()
-@click.option(
-    "-g",
-    "--game-type",
-    type=click.Choice(list(pyspiel.registered_names()), case_sensitive=False),
-    default="tic_tac_toe",
-    show_default=True,
-    help="game type",
-)
-@click.option(
-    "-a",
-    "--algorithm",
-    type=click.Choice(["dqn", "pg"], case_sensitive=False),
-    default="dqn",
-    show_default=True,
-    help="Reinforcement learning algorithm",
-)
-@click.option(
-    "-h",
-    "--hyperparameter-file",
-    type=str,
-    default="hyperparams.yaml",
-    show_default=True,
+@click.argument(
+    'hyperparameter-file',
     help="YAML file with hyperparameter values",
 )
-def train(game_type, algorithm, hyperparameter_file):
+def train(hyperparameter_file):
 
     with open(hyperparameter_file, "r") as f:
         hp = yaml.safe_load(f)
 
-    if algorithm == "dqn":
-        from margam.train_dqn import train_dqn
-        train_dqn(game_type, hp[game_type])
-    elif algorithm == "pg":
-        from margam.train_pg import train_pg
-        train_pg(game_type, hp[game_type])
+    try:
+        game_type = hp["GAME"]
+        algorithm = hp["ALGORITHM"]
+    except KeyError as e:
+        print(f"Hyperparameter file is missing field: {e}")
+        sys.exit(1)
+
+    gh = build_game_handler(game_type)
+
+    if algorithm.lower() == "dqn":
+        from margam.dqn import DQNPlayer, DQNTrainer
+        agent = PolicyPlayer(gh, name="pg-agent", model=None)
+        trainer = DQNTrainer(agent=agent)
+    elif algorithm.lower() == "pg":
+        from margam.pg import PolicyPlayer, PolicyGradientTrainer
+        agent = PolicyPlayer(gh, name="dqn-agent", model=None)
+        trainer = PolicyGradientTrainer(agent=agent)
+    else:
+        print(f"{algorithm} is not a supported algorithm. Options are dqn or pg.")
+        sys.exit(1)
+
+    print(f"Training agent with {trainer.type} to play {game_type}")
+    trainer.train()
+
 
 
 if __name__ == "__main__":

@@ -8,6 +8,18 @@ import numpy as np
 
 from margam.rl import GameHandler
 
+def create_opponent(game_type): # WIP
+    opp_type = opp_type.lower()
+    if opp_type == "conservative":
+        return ConservativePlayer(name="Conservative")
+    elif opp_type == "random":
+        return [RandomPlayer(name="Rando")]
+    elif opp_type == GameType.LIARS_DICE:
+        return []
+    else:
+        raise MargamError(f"Unsupported opponenet type: {game_type.value}")
+
+
 
 class Player(ABC):
 

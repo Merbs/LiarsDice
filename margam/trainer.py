@@ -3,10 +3,7 @@ from enum import Enum
 from pathlib import Path
 
 from margam.rl import GameHandler, GameType, build_game_handler
-
-class RLAlgorithm:
-    DQN = "dqn"
-    PG = "pg"
+from margam.player import Player
 
 class RLTrainer(ABC):
     """
@@ -15,11 +12,17 @@ class RLTrainer(ABC):
     rotating opponents
     """
 
-    def __init__(self, game_type: str, save_folder=None):
-        self.hp = {}
+    def __init__(
+        self,
+        game_type: str,
+        hyperparameters: dict,
+        agent: Player,
+        opponents: List[Player],
+        save_folder=None: str,
+        ):
         self.game_handler = build_game_handler(game_type)
-        self.agent = None
-        self.rotating_opponents = []
+        self.agent = agent
+        self.rotating_opponents = opponents
         self.writer = None
         self.step = 0
         self.episode_ind = 0
@@ -29,6 +32,12 @@ class RLTrainer(ABC):
         self.best_reward = 0
         self.name = self.get_unique_name()
         self.save_folder = Path(save_folder or self.name)
+        self.load_hyperparameters(hyperparameters)
+
+    @abstractmethod
+    @property
+    def algotype(self):
+        return "Policy Gradient
 
     @staticmethod
     def get_now_str():

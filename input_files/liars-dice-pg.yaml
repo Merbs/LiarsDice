@@ -1,5 +1,7 @@
 ---
 GAME: "liars_dice"
+OPPONENTS:
+  - "conservative"
 ALGORITHM: "PG"
 MAX_EPISODES: 200_000
 #Learning:

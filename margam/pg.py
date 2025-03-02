@@ -112,26 +112,29 @@ class PolicyPlayer(Player):
 
 class PolicyGradientTrainer(RLTrainer):
 
+    self.type = "Policy Gradient"
+
     def __init__(self,*args,**kwargs):
         super().__init__(*args, **kwargs)
         self.epsisode_transitions = []
 
+    @property
+    def algotype(self):
+        return "Policy Gradient"
+
     def get_unique_name(self) -> str:
         return f"PG-{self.game_handler.game_type.value}-{self.get_now_str()}"
 
-    def initiaize_agent(self) -> PolicyPlayer:
-        self.agent = PolicyPlayer(name=f"PG-{self.get_now_str()}")
-
     def initialize_players(self):
-        agent = PolicyPlayer()
+        self.agent = PolicyPlayer(name=f"PG-{self.get_now_str()}")
         opponents = [ConservativePlayer(name="Conservative")]
 
     def initialize_training_stats(self):
         reward_buffer = deque(maxlen=self.REWARD_BUFFER_SIZE)
         reward_buffer_vs = {}
-        for opp in opponents:
+        for opp in rotating_opponents:
             reward_buffer_vs[opp.name] = deque(
-                maxlen=self.REWARD_BUFFER_SIZE // len(opponents)
+                maxlen=self.REWARD_BUFFER_SIZE // len(rotating_opponents)
             )
 
         optimizer = Adam(learning_rate=self.LEARNING_RATE)
@@ -274,10 +277,10 @@ class PolicyGradientTrainer(RLTrainer):
             loss = expectation_loss + entropy_loss
             if self.ACTOR_CRITIC:
                 loss += state_loss * self.STATE_VALUE_BETA
-                if record_scalars:
+                if writer and record_scalars:
                     writer.add_scalar("state-loss", state_loss.numpy(), step)
 
-                if record_histograms:
+                if writer and record_histograms:
                     writer.add_histogram("state_value_train", rewards, step)
                     writer.add_histogram("state_value_pred", state_values.numpy(), step)
                     state_value_error = state_values - rewards
@@ -285,7 +288,7 @@ class PolicyGradientTrainer(RLTrainer):
                         "state_value_error", state_value_error.numpy(), step
                     )
 
-        if record_scalars:
+        if writer and record_scalars:
             writer.add_scalar("log-expect-loss", expectation_loss.numpy(), step)
             writer.add_scalar("entropy-loss", entropy_loss.numpy(), step)
             writer.add_scalar("loss", loss.numpy(), step)
@@ -296,7 +299,7 @@ class PolicyGradientTrainer(RLTrainer):
         # optimizer.apply_gradients(zip(grads, tape.watched_variables()))
 
         # calc KL-div
-        if record_scalars:
+        if writer and record_scalars:
             new_logits_v = agent.model.predict_on_batch(x_train)
             if self.ACTOR_CRITIC:
                 new_logits_v, _ = new_logits_v
@@ -310,7 +313,7 @@ class PolicyGradientTrainer(RLTrainer):
             writer.add_scalar("Kullback-Leibler divergence", kl_div_v.item(), step)
 
         # Track gradient variance
-        if record_histograms:
+        if writer and record_histograms:
             weights_and_biases_flat = np.concatenate(
                 [v.numpy().flatten() for v in agent.model.variables]
             )
