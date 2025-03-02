@@ -16,8 +16,6 @@ from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
 
-import pyspiel
-
 from margam.player import MiniMax, Player
 from margam.utils import (
     MargamError,
@@ -62,10 +60,9 @@ class DQNPlayer(Player):
         """
         Construct neural network used by agent
         """
-        game = pyspiel.load_game(game_type)
-        state = game.new_initial_state()
-        state_np_for_cov, human_view_state = get_training_and_viewing_state(game, state)
-        nn_input = keras.Input(shape=state_np_for_cov.shape)
+        state_eg = self.game_handler.game.new_initial_state()
+        eval_vector_eg = get_training_and_viewing_state(state_eg)
+        nn_input = keras.Input(shape=eval_vector_eg.shape)
 
         if self.game_handler.game_type == GameType.TIC_TAC_TOE:
             q_values = self.initialize_tic_tac_toe_model(dueling=dueling)
@@ -111,12 +108,19 @@ class DQNPlayer(Player):
 
 class DQNTrainer(RLTrainer):
 
-    def sample_experience_buffer(buffer, batch_size):
-        indices = np.random.choice(len(buffer), batch_size, replace=False)
-        return [buffer[idx] for idx in indices]
+    def __init__(*args,**kwargs):
+        super.__init__(*args,**kwargs)
+        self.target_network = None
+
+    def get_unique_name(self) -> str:
+        return f"DQN-{self.game_handler.game_type.value}-{self.get_now_str()}"
+
+    def sample_experience_buffer(self, batch_size):
+        indices = np.random.choice(len(self.reward_buffer), batch_size, replace=False)
+        return [self.reward_buffer[idx] for idx in indices]
 
     def update_neural_network(
-        step, training_data, agent, target_network, hp, optimizer, mse_loss, writer
+        self, step, training_data, agent, hp, optimizer, mse_loss, writer
     ):
         """
         Perform one step of weight update
@@ -142,7 +146,7 @@ class DQNTrainer(RLTrainer):
 
         # Double DQN - Use on policy network to choose best move
         #   and target network to evaluate the Q-value
-        resulting_board_q_target = target_network.predict_on_batch(resulting_boards)
+        resulting_board_q_target = self.target_network.predict_on_batch(resulting_boards)
         if hp["DOUBLE_DQN"]:
             resulting_board_q_on_policy = agent.model.predict_on_batch(resulting_boards)
             max_move_inds_on_policy = resulting_board_q_on_policy.argmax(axis=1)
@@ -215,7 +219,7 @@ class DQNTrainer(RLTrainer):
                     [v.numpy().flatten() for v in agent.model.variables]
                 )
                 weights_and_biases_target = np.concatenate(
-                    [v.numpy().flatten() for v in target_network.variables]
+                    [v.numpy().flatten() for v in self.target_network.variables]
                 )
                 target_parameter_updates = (
                     weights_and_biases_flat - weights_and_biases_target
@@ -224,7 +228,7 @@ class DQNTrainer(RLTrainer):
                     "target parameter updates", target_parameter_updates, step
                 )
 
-            target_network.set_weights(agent.model.get_weights())
+            self.target_network.set_weights(agent.model.get_weights())
 
 
     def _train(game_type, hp):
@@ -236,12 +240,11 @@ class DQNTrainer(RLTrainer):
         # Intialize agent and model
         agent = DQNPlayer(name=f"DQN-{get_now_str()}")
         agent.model = initialize_model(game_type, hp)
-        target_network = keras.models.clone_model(agent.model)
-        target_network.set_weights(agent.model.get_weights())
+        self.target_network = keras.models.clone_model(agent.model)
+        self.target_network.set_weights(agent.model.get_weights())
         with open(f"saved-models/{agent.name}.yaml", "w") as f:
             yaml.dump(hp, f)
 
-        game = pyspiel.load_game(game_type)
         opponents = [MiniMax(name="Minnie", max_depth=1)]
 
         experience_buffer = deque(maxlen=hp["REPLAY_SIZE"])
@@ -274,18 +277,11 @@ class DQNTrainer(RLTrainer):
             agent_transitions = generate_episode_transitions(
                 game_type, hp, agent, opponent, player_pos
             )
-            agent_transitions = apply_temporal_difference(  # move logic to parent class
-                agent_transitions,
-                hp["DISCOUNT_RATE"],
-                n_td=hp["N_TD"],
-            )
-
             if hp["USE_SYMMETRY"]:
                 agent_transitions = add_symmetries(agent_transitions)
             episode_ind += 1
 
-            for t in agent_transitions:
-                experience_buffer.append(t)
+            experience_buffer += agent_transitions
             reward_buffer.append(agent_transitions[-1].reward)
             reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
             if episode_ind % hp["RECORD_EPISODES"] == 0:
@@ -314,15 +310,12 @@ class DQNTrainer(RLTrainer):
                     continue
 
                 # Get training data
-                training_data = sample_experience_buffer(
-                    experience_buffer, hp["BATCH_SIZE"]
-                )
+                training_data = self.sample_experience_buffer(hp["BATCH_SIZE"])
 
                 update_neural_network(
                     step,
                     training_data,
                     agent,
-                    target_network,
                     hp,
                     optimizer,
                     mse_loss,

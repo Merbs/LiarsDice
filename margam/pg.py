@@ -16,8 +16,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.nn import softmax
 from tqdm import tqdm
 
-import pyspiel
-
 from margam.player import ColumnSpammer, MiniMax, Player, RandomPlayer
 from margam.utils import MargamError, game_handler
 
@@ -55,7 +53,6 @@ class PolicyPlayer(Player):
         elif self.game_handler.game_type == GameType.LIARS_DICE:
             nn_outputs = self.initialize_liars_dice_model(nn_input)
         else:
-            # Provide default model?
             raise MargamError(f"{self.game_handler.game_type} not implemented")
         
         model = keras.Model(inputs=nn_input, outputs=nn_outputs, name=f"{self.name}-model")
@@ -115,12 +112,18 @@ class PolicyPlayer(Player):
 
 class PolicyGradientTrainer(RLTrainer):
 
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args, **kwargs)
+        self.epsisode_transitions = []
+
+    def get_unique_name(self) -> str:
+        return f"PG-{self.game_handler.game_type.value}-{self.get_now_str()}"
+
     def initiaize_agent(self) -> PolicyPlayer:
-        self.agent = PolicyPlayer()
+        self.agent = PolicyPlayer(name=f"PG-{self.get_now_str()}")
 
     def initialize_players(self):
-        agent = PolicyPlayer(name=f"PG-{self.get_now_str()}")
-        agent.model = initialize_model(game_type, hp)
+        agent = PolicyPlayer()
         opponents = [ConservativePlayer(name="Conservative")]
 
     def initialize_training_stats(self):
@@ -151,39 +154,13 @@ class PolicyGradientTrainer(RLTrainer):
         self.initialize_training_stats()
         
 
-        while episode_ind <= hp["MAX_EPISODES"]:
-            self.execute_training_step()
+        while self.episode_ind <= hp["MAX_EPISODES"]:
+            self.execute_episodic_training_step()
 
-    def execute_training_step():
-
-        opponent = opponents[(episode_ind // 2) % len(opponents)]
-        player_pos = episode_ind % 2
-
-        agent_transitions = generate_episode_transitions(
-            game_type, hp, agent, opponent, player_pos
-        )
-        agent_transitions = apply_temporal_difference(  # move logic to parent class
-            agent_transitions,
-            hp["DISCOUNT_RATE"],
-            n_td=hp["N_TD"],
-        )
-        if hp["USE_SYMMETRY"]:
-            agent_transitions = add_symmetries(agent_transitions)
-        
-        episode_ind += 1
-        step += len(agent_transitions)
-        epsisode_transitions.append(agent_transitions)
-
-        reward_buffer.append(agent_transitions[-1].reward)
-        reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
-        for t in agent_transitions:
-            experience_buffer.append(t)
-        if episode_ind % hp["RECORD_EPISODES"] == 0:
-            record_episode_statistics(
-                writer, game, step, experience_buffer, reward_buffer, reward_buffer_vs
-            )
-
-        # Save model if we have a historically best result
+    def save_checkpoint_model(self):
+        """
+        Save model if we have a historically best result
+        """
         smoothed_reward = sum(reward_buffer) / len(reward_buffer)
         if (
             len(reward_buffer) == hp["REWARD_BUFFER_SIZE"]
@@ -192,9 +169,41 @@ class PolicyGradientTrainer(RLTrainer):
             agent.model.save(f"saved-models/{agent.name}.keras")
             best_reward = smoothed_reward
 
+    def generate_episode_transitions(self):
+        agent_transitions = super().generate_episode_transitions()
+        agent_transitions = self.apply_temporal_difference(
+            agent_transitions,
+            hp["DISCOUNT_RATE"],
+            n_td=hp["N_TD"],
+        )
+        if hp["USE_SYMMETRY"]:
+            agent_transitions = add_symmetries(agent_transitions)
+        self.episode_ind += 1
+        return agent_transitions
+
+    def execute_episodic_training_step(self):
+        agent_transitions = self.generate_episode_transitions()
+        self.step += len(agent_transitions)
+        epsisode_transitions.append(agent_transitions)
+
+        reward_buffer.append(agent_transitions[-1].reward)
+        reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
+        experience_buffer += agent_transitions
+        if episode_ind % hp["RECORD_EPISODES"] == 0:
+            self.record_episode_statistics()
+
+        self.save_checkpoint_model()
+
         # Don't start training the network until we have enough data
-        if len(epsisode_transitions) < hp["BATCH_N_EPISODES"]:
-            continue
+        if len(epsisode_transitions) >= hp["BATCH_N_EPISODES"]:
+            self.update_model()
+            epsisode_transitions.clear()
+
+    def update_model(self):
+        """
+        Execute a backpropagation optimization step on the agent's
+        neural network and record statistics
+        """
 
         training_data = [t for et in epsisode_transitions for t in et]
         record_histograms = (
@@ -207,10 +216,8 @@ class PolicyGradientTrainer(RLTrainer):
         )
 
         # Unpack training data
-        game = pyspiel.load_game(game_type,{"numdice":5})
         selected_actions = np.array([trsn.action for trsn in training_data])
-        #selected_move_mask = one_hot(selected_actions, game.num_distinct_actions())
-        selected_move_mask = one_hot(selected_actions, 61)
+        selected_move_mask = one_hot(selected_actions, self.game_handler.game.num_distinct_actions())
         x_train = np.array([trsn.state for trsn in training_data])
         rewards = np.array([trsn.reward for trsn in training_data]).astype("float32")
         action_legality = np.array([trsn.legal_actions for trsn in training_data]).astype("float32")
@@ -327,6 +334,3 @@ class PolicyGradientTrainer(RLTrainer):
             writer.add_scalar("grad_rmse", grad_rmse, step)
             grad_max = np.abs(grads_flat).max()
             writer.add_scalar("grad_max", grad_max, step)
-
-        # Reset sampling
-        epsisode_transitions.clear()

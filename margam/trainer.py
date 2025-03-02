@@ -8,16 +8,25 @@ class RLAlgorithm:
     PG = "pg"
 
 class RLTrainer(ABC):
+    """
+    Assumes you have an agent with a model and that you
+    are training it in a 2-player game with a set of
+    rotating opponents
+    """
 
     def __init__(self, game_type: str):
         self.hp = {}
         self.game_handler = build_game_handler(game_type)
         self.agent = None
+        self.rotating_opponents = []
         self.writer = None
         self.step = 0
+        self.episode_ind = 0
         self.experience_buffer = []
         self.reward_buffer = []
         self.reward_buffer_vs = {}
+        self.best_reward = 0
+        self.name = self.get_unique_name()
 
     @staticmethod
     def get_now_str():
@@ -29,20 +38,32 @@ class RLTrainer(ABC):
         return now_str
 
     @abstractmethod
+    def get_unique_name(self) -> str:
+        pass
+
+    @abstractmethod
     def initiaize_agent(self) -> Player:
         """
         Create an untrained trainable agent
         """
         pass
 
+    def generate_episode_transitions(self, players) -> List[List[Transition]]:
+        """
+        make player list with agent and rotating opponent
+        """
+        opponent = opponents[(self.episode_ind // 2) % len(self.rotating_opponents)]
+        players = [self.agent,opponent]
+        if episode_ind % 2:
+            players = list(reversed(players))
+        return self.game_handler.generate_episode_transitions(players)[episode_ind % 2]
     
     def train(self):
         """
         Train the agent
         """
-        # Create agent
-        if self.agent is None:
-            self.initiaize_agent()
+
+        self.agent = self.agent or self.initiaize_agent()
 
         # Make collateral folder and save hyperparameters
         with open(f"saved-models/{agent.name}.yaml", "w") as f:

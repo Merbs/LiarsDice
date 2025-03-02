@@ -11,12 +11,11 @@ from margam.rl import build_game_handler
 def main():
     pass
 
-
 @main.command()
 @click.option(
     "-g",
     "--game-type",
-    type=click.Choice(list(pyspiel.registered_names()), case_sensitive=False),
+    type=click.Choice([gt.value for gt in GameType], case_sensitive=False),
     default="connect_four",
     show_default=True,
     help="game type",
