@@ -69,7 +69,7 @@ class GameHandler(ABC):
         pass
 
     def get_open_spiel_game(self):
-        return pyspiel.load_game(self.game_type)
+        return pyspiel.load_game(self.game_type.value)
 
     def generate_episode_transitions(self, players) -> List[List[Transition]]:
         """
