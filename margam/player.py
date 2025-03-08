@@ -8,14 +8,16 @@ import numpy as np
 
 from margam.rl import GameHandler
 
-def create_opponent(game_type): # WIP
+def create_player(game_handler, **kwargs):
     opp_type = opp_type.lower()
     if opp_type == "conservative":
-        return ConservativePlayer(name="Conservative")
+        return ConservativePlayer(game_handler, name="Conservative", **kwargs)
     elif opp_type == "random":
-        return [RandomPlayer(name="Rando")]
-    elif opp_type == GameType.LIARS_DICE:
-        return []
+        return RandomPlayer(game_handler, name="Rando", **kwargs)
+    elif opp_type == "minimax":
+        return MiniMax(game_handler, name="Minimax", **kwargs)
+    elif opp_type == "spammer":
+        return ActionSpammer(game_handler, name="Spammer", **kwargs)
     else:
         raise MargamError(f"Unsupported opponenet type: {game_type.value}")
 
@@ -61,7 +63,7 @@ class RandomPlayer(Player):
         return random.choice(state.legal_actions())
 
 
-class ColumnSpammer(Player):
+class ActionSpammer(Player):
     """
     Rank all game actions at the beginning and
     always play the most preferred legal action
@@ -98,13 +100,15 @@ class MiniMax(Player):
         self.max_depth = max_depth
 
     def eval_state(
-        self, state, game, depth, orig_player
+        self, state, depth, orig_player
     ) -> Tuple[float, Optional[int]]:
         """
         Returns a tuple with
         - The value of the current state for player 0
         - The best move to be taken for current agent
         """
+
+        game = self.game_handler.game
 
         if state.is_terminal():
             return (state.returns()[orig_player], None)
@@ -130,7 +134,6 @@ class MiniMax(Player):
     def get_move(self, state) -> int:
         value, move = self.eval_state(
             state,
-            game,
             self.max_depth,
             orig_player=state.current_player(),
         )

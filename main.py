@@ -83,16 +83,25 @@ def train(hyperparameter_file):
     try:
         game_type = hp["GAME"]
         algorithm = hp["ALGORITHM"]
+        opponent_list = hp["OPPONENTS"]
     except KeyError as e:
         print(f"Hyperparameter file is missing field: {e}")
         sys.exit(1)
 
     gh = build_game_handler(game_type)
+    opponents = [create_player(gh) for opp in opponent_list]
 
     if algorithm.lower() == "dqn":
         from margam.dqn import DQNPlayer, DQNTrainer
         agent = PolicyPlayer(gh, name="pg-agent", model=None)
-        trainer = DQNTrainer(agent=agent)
+        opponents = get_opponents(gh.game_type)
+        trainer = DQNTrainer(
+            game_type = gh,
+            hyperparameters = hp,
+            agent = agent,
+            opponents = opponents,
+            save_to_disk = True,
+            )
     elif algorithm.lower() == "pg":
         from margam.pg import PolicyPlayer, PolicyGradientTrainer
         agent = PolicyPlayer(gh, name="dqn-agent", model=None)

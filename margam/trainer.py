@@ -18,7 +18,7 @@ class RLTrainer(ABC):
         hyperparameters: dict,
         agent: Player,
         opponents: List[Player],
-        save_folder=None: str,
+        save_to_disk=True: bool,
         ):
         self.game_handler = build_game_handler(game_type)
         self.agent = agent
@@ -31,7 +31,7 @@ class RLTrainer(ABC):
         self.reward_buffer_vs = {}
         self.best_reward = 0
         self.name = self.get_unique_name()
-        self.save_folder = Path(save_folder or self.name)
+        self.save_folder = Path(self.name) if save_to_disk else None
         self.load_hyperparameters(hyperparameters)
 
     @abstractmethod
@@ -74,21 +74,23 @@ class RLTrainer(ABC):
         Train the agent
         """
 
-        self.agent = self.agent or self.initiaize_agent()
+        if not self.agent:
+            raise MargamError("Agent is required for training")
+        if not self.rotating_opponents:
+            raise MargamError("Opponent list must not be empty")
 
         # Make collateral folder and save hyperparameters
-        with open(f"saved-models/{agent.name}.yaml", "w") as f:
+        with open(f"{self.name}.yaml", "w") as f:
             yaml.dump(hp, f)
 
         # Open writer
-        self.writer = SummaryWriter(f"runs/{agent.name}")
-
-
+        self.writer = SummaryWriter(f"runs/{self.name}")
         try:
             self._train()
         finally:
-            self.writer.close()
-            self.writer = None
+            if self.writer:
+                self.writer.close()
+                self.writer = None
 
     @abstractmethod
     def _train(self):
