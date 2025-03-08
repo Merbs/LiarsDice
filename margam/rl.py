@@ -34,14 +34,14 @@ class Transition:
 
 
 
-def build_game_handler(game_type: str):
+def build_game_handler(game_type: str, **kwargs):
     gt = GameType(game_type)
     if gt == GameType.CONNECT_FOUR:
-        return ConnectFourHandler()
+        return ConnectFourHandler(**kwargs)
     elif gt == GameType.TIC_TAC_TOE:
-        return TicTacToeHandler()
+        return TicTacToeHandler(**kwargs)
     elif gt == GameType.LIARS_DICE:
-        return LiarsDiceHandler()
+        return LiarsDiceHandler(**kwargs)
     else:
         raise MargamError(f"Unsupported game type: {game_type}")
 
@@ -56,8 +56,8 @@ class GameHandler(ABC):
         Get a vector representing the observation
         of the current player
         """
-        state_as_tensor = state.observation_tensor()
-        tensor_shape = self.game.observation_tensor_shape()
+        state_as_tensor = state.observation_tensor()    # TODO: replace with information_state_tensor()
+        tensor_shape = self.game.observation_tensor_shape() # replace with information_state_tensor_shape()
         return np.reshape(np.asarray(state_as_tensor), tensor_shape)
          
 
@@ -78,7 +78,7 @@ class GameHandler(ABC):
         """
         state = self.game.new_initial_state()
 
-        agent_transitions = [[]] *len(players)
+        agent_transitions = [[]] * len(players)
         while not state.is_terminal():
             if state.is_chance_node():
                 # Sample a chance event outcome.
@@ -111,10 +111,10 @@ class GameHandler(ABC):
             # Update rewards for last action taken by each player
             # since these may be updated after another player
             # takes their turn
-            for player_ind, _ in enumerate(players):
-                if len(agent_transitions[player_ind]) == 0:
+            for player_ind, at in enumerate(agent_transitions):
+                if len(at) == 0:
                     continue
-                agent_transitions[player_ind][-1].reward = state.rewards()[player_ind]
+                at[-1].reward = state.rewards()[player_ind]
 
         return agent_transitions
 
