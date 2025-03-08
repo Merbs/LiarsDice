@@ -16,8 +16,9 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.nn import softmax
 from tqdm import tqdm
 
-from margam.player import ColumnSpammer, MiniMax, Player, RandomPlayer
-from margam.utils import MargamError, game_handler
+from margam.player import Player
+from margam.rl import MargamError
+from margam.trainer import RLTrainer
 
 
 class PolicyPlayer(Player):
@@ -153,7 +154,8 @@ class PolicyGradientTrainer(RLTrainer):
         if not self.ACTOR_CRITIC:
             self.N_TD = -1
 
-        self.initialize_players()
+        if self.agent is None:
+            self.agent = PolicyPlayer(name=f"PG-{self.get_now_str()}")  # auto-build player?
         self.initialize_training_stats()
         
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import numpy as np
 
-from margam.rl import GameHandler, GameType, build_game_handler
+from margam.rl import GameHandler
 from margam.player import Player
 
 class RLTrainer(ABC):
@@ -16,13 +16,13 @@ class RLTrainer(ABC):
 
     def __init__(
         self,
-        game_type: str,
+        game_handler: GameHandler,
         hyperparameters: dict,
         agent: Player,
         opponents: List[Player],
-        save_to_disk=True: bool,
+        save_to_disk: bool = True,
         ):
-        self.game_handler = build_game_handler(game_type)
+        self.game_handler = game_handler
         self.agent = agent
         self.rotating_opponents = opponents
         self.writer = None
@@ -35,11 +35,6 @@ class RLTrainer(ABC):
         self.name = self.get_unique_name()
         self.save_folder = Path(self.name) if save_to_disk else None
         self.load_hyperparameters(hyperparameters)
-
-    @abstractmethod
-    @property
-    def algotype(self):
-        return "Policy Gradient
 
     @staticmethod
     def get_now_str():
@@ -143,6 +138,8 @@ class RLTrainer(ABC):
         """
         Save model if we have a historically best result
         """
+        if not self.save_folder:
+            return
         smoothed_reward = sum(self.reward_buffer) / len(self.reward_buffer)
         if (
             len(self.reward_buffer) == self.REWARD_BUFFER_SIZE
