@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
+import os
+import numpy as np
 
 from margam.rl import GameHandler, GameType, build_game_handler
 from margam.player import Player
@@ -29,7 +31,7 @@ class RLTrainer(ABC):
         self.experience_buffer = []
         self.reward_buffer = []
         self.reward_buffer_vs = {}
-        self.best_reward = 0
+        self.best_reward = -np.inf
         self.name = self.get_unique_name()
         self.save_folder = Path(self.name) if save_to_disk else None
         self.load_hyperparameters(hyperparameters)
@@ -79,18 +81,21 @@ class RLTrainer(ABC):
         if not self.rotating_opponents:
             raise MargamError("Opponent list must not be empty")
 
-        # Make collateral folder and save hyperparameters
-        with open(f"{self.name}.yaml", "w") as f:
-            yaml.dump(hp, f)
+        if self.save_folder:
+            os.makedirs(self.save_folder, exist_ok=True)
 
-        # Open writer
-        self.writer = SummaryWriter(f"runs/{self.name}")
+            yaml_save = os.path.join(self.save_folder,f"{self.name}.yaml")
+            with open(yaml_save, "w") as f:
+                yaml.dump(hp, f)
+
+            self.writer = SummaryWriter(f"runs/{self.name}")
+        
         try:
             self._train()
         finally:
             if self.writer:
                 self.writer.close()
-                self.writer = None
+            self.writer = None
 
     @abstractmethod
     def _train(self):
@@ -138,13 +143,13 @@ class RLTrainer(ABC):
         """
         Save model if we have a historically best result
         """
-        smoothed_reward = sum(reward_buffer) / len(reward_buffer)
+        smoothed_reward = sum(self.reward_buffer) / len(self.reward_buffer)
         if (
-            len(reward_buffer) == self.REWARD_BUFFER_SIZE
-            and smoothed_reward > best_reward + self.SAVE_MODEL_REL_THRESHOLD
+            len(self.reward_buffer) == self.REWARD_BUFFER_SIZE
+            and smoothed_reward > self.best_reward + self.SAVE_MODEL_REL_THRESHOLD
         ):
-            agent.model.save(f"{self.save_folder}/{agent.name}.keras")
-            best_reward = smoothed_reward
+            self.agent.model.save(f"{self.save_folder}/{agent.name}.keras")
+            self.best_reward = smoothed_reward
 
     def record_episode_statistics(self):
 
@@ -165,7 +170,9 @@ class RLTrainer(ABC):
         wins = sum(r == self.game_handler.game.max_utility() for r in self.reward_buffer)
         ties = sum(r == 0 for r in self.reward_buffer)
         losses = sum(r == self.game_handler.game.min_utility() for r in self.reward_buffer)
-        assert wins + ties + losses == len(self.reward_buffer)
+        if (wins + ties + losses) != len(self.reward_buffer):
+            raise MargamError(f"Wins: {}, losses: {}, ties: {}, episodes in buffer: {}",
+                wins, ties, losses, len(self.reward_buffer))
         self.writer.add_scalar("Win rate", wins / len(self.reward_buffer), self.step)
         self.writer.add_scalar("Tie rate", ties / len(self.reward_buffer), self.step)
         self.writer.add_scalar("Loss rate", losses / len(self.reward_buffer), self.step)
