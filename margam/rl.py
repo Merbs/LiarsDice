@@ -187,8 +187,8 @@ class TicTacToeHandler(GameHandler):
 class LiarsDiceHandler(GameHandler):
 
     def __init__(self, n_dice=5):
-        super().__init__(GameType.LIARS_DICE)
         self.n_dice = n_dice
+        super().__init__(GameType.LIARS_DICE)
 
     def get_open_spiel_game(self):
         return pyspiel.load_game(self.game_type.value,{"numdice":self.n_dice})
