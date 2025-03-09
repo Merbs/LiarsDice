@@ -50,7 +50,7 @@ class PolicyPlayer(Player):
             raise MargamError(f"{self.game_handler.game_type} not implemented")
 
         model = keras.Model(
-            inputs=nn_input, outputs=nn_outputs, name=f"{self.name}-model"
+            inputs=nn_input, outputs=nn_outputs, name=f"PG_{self.game_handler.game_type.value}_model"
         )
 
         if show_model:

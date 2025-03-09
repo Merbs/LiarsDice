@@ -173,6 +173,8 @@ class RLTrainer(ABC):
             self.best_reward = smoothed_reward
 
     def record_episode_statistics(self):
+        if not self.writer:
+            return
 
         # Record move distribution
         move_distribution = [mr.action for mr in self.experience_buffer]
