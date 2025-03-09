@@ -66,7 +66,7 @@ class DQNPlayer(Player):
 
         if self.game_handler.game_type == GameType.TIC_TAC_TOE:
             q_values = self.initialize_tic_tac_toe_model(dueling=dueling)
-        elif self.game_handler. == GameType.CONNECT_FOUR:
+        elif self.game_handler == GameType.CONNECT_FOUR:
             q_values = self.initialize_connect_four_model(dueling=dueling)
         else:
             raise MargamError(f"{game_type} not implemented for DQN")
@@ -76,7 +76,7 @@ class DQNPlayer(Player):
             model.summary()
         return model
 
-    def initialize_tic_tac_toe_model(self,nn_input,dueling=True):
+    def initialize_tic_tac_toe_model(self, nn_input, dueling=True):
         input_flat = layers.Flatten()(nn_input)
         x = layers.Dense(32, activation="relu")(input_flat)
         q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
@@ -93,11 +93,11 @@ class DQNPlayer(Player):
                 q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
             )
 
-    def initialize_connect_four_model(self,nn_input,dueling=True):
-        x = layers.Conv2D(64,4)(nn_input)
-        x = layers.MaxPooling2D(pool_size=(2,2))(x)
+    def initialize_connect_four_model(self, nn_input, dueling=True):
+        x = layers.Conv2D(64, 4)(nn_input)
+        x = layers.MaxPooling2D(pool_size=(2, 2))(x)
         x = layers.Flatten()(x)
-        x = layers.Dense(64,activation="relu")(x)
+        x = layers.Dense(64, activation="relu")(x)
         q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
         if dueling:
             x_sv = layers.Dense(32, activation="relu")(x)
@@ -106,10 +106,11 @@ class DQNPlayer(Player):
                 q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
             )
 
+
 class DQNTrainer(RLTrainer):
 
-    def __init__(*args,**kwargs):
-        super.__init__(*args,**kwargs)
+    def __init__(*args, **kwargs):
+        super.__init__(*args, **kwargs)
         self.target_network = None
 
     @property
@@ -150,7 +151,9 @@ class DQNTrainer(RLTrainer):
 
         # Double DQN - Use on policy network to choose best move
         #   and target network to evaluate the Q-value
-        resulting_board_q_target = self.target_network.predict_on_batch(resulting_boards)
+        resulting_board_q_target = self.target_network.predict_on_batch(
+            resulting_boards
+        )
         if self.DOUBLE_DQN:
             resulting_board_q_on_policy = agent.model.predict_on_batch(resulting_boards)
             max_move_inds_on_policy = resulting_board_q_on_policy.argmax(axis=1)
@@ -167,12 +170,14 @@ class DQNTrainer(RLTrainer):
 
         rewards = np.array([trsn.reward for trsn in training_data])
         q_to_train_single_values = rewards + (
-            self.DISCOUNT_RATE ** self.N_TD
+            self.DISCOUNT_RATE**self.N_TD
         ) * np.multiply(non_terminal_states, max_qs)
 
         # Needed for our mask
         selected_actions = [trsn.action for trsn in training_data]
-        selected_action_mask = one_hot(selected_actions, resulting_board_q_target.shape[1])
+        selected_action_mask = one_hot(
+            selected_actions, resulting_board_q_target.shape[1]
+        )
 
         # Compute MSE loss based on chosen move values only
         with tf.GradientTape() as tape:
@@ -234,7 +239,6 @@ class DQNTrainer(RLTrainer):
 
             self.target_network.set_weights(agent.model.get_weights())
 
-
     def _train(game_type, hp):
         """
         Perform the training loop that runs episodes
@@ -265,7 +269,7 @@ class DQNTrainer(RLTrainer):
         mse_loss = MeanSquaredError()
         optimizer = Adam(learning_rate=self.LEARNING_RATE)
 
-        writer = SummaryWriter(f"runs/{agent.name}")    # inject this
+        writer = SummaryWriter(f"runs/{agent.name}")  # inject this
         best_reward = self.SAVE_MODEL_ABS_THRESHOLD
         episode_ind = 0  # Number of full episodes completed
         step = 0  # Number of agent actions taken
@@ -293,7 +297,12 @@ class DQNTrainer(RLTrainer):
             reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
             if self.writer and episode_ind % self.RECORD_EPISODES == 0:
                 record_episode_statistics(
-                    writer, game, step, experience_buffer, reward_buffer, reward_buffer_vs
+                    writer,
+                    game,
+                    step,
+                    experience_buffer,
+                    reward_buffer,
+                    reward_buffer_vs,
                 )
 
             if self.writer and agent.random_weight > self.EPSILON_FINAL:

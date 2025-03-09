@@ -2,13 +2,14 @@ import copy
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
-from margam.rl import GameHandler
+from margam.rl import MargamError
 
-def create_player(game_handler, **kwargs):
+
+def create_player(opp_type, game_handler, **kwargs):
     opp_type = opp_type.lower()
     if opp_type == "conservative":
         return ConservativePlayer(game_handler, name="Conservative", **kwargs)
@@ -19,8 +20,7 @@ def create_player(game_handler, **kwargs):
     elif opp_type == "spammer":
         return ActionSpammer(game_handler, name="Spammer", **kwargs)
     else:
-        raise MargamError(f"Unsupported opponenet type: {game_type.value}")
-
+        raise MargamError(f"Unsupported opponenet type: {opp_type}")
 
 
 class Player(ABC):
@@ -43,10 +43,10 @@ class HumanPlayer(Player):
         self.game_handler.show_state_on_terminal(eval_vector)
         print("Available moves:")
         print(state.legal_actions())
-        
+
         valid_input = False
         while not valid_input:
-            new_input = input(f"Select a move:")
+            new_input = input("Select a move:")
 
             try:
                 move_to_play = int(new_input)
@@ -68,18 +68,23 @@ class ActionSpammer(Player):
     Rank all game actions at the beginning and
     always play the most preferred legal action
     """
+
     def __init__(self, game_handler, name=None, move_preferences=None):
         super().__init__(game_handler, name)
         self.move_preferences = move_preferences
         if move_preferences is None:
-            self.move_preferences = [i for _ in range(game_handler.game.num_distinct_actions())]
+            self.move_preferences = [
+                i for i in range(game_handler.game.num_distinct_actions())
+            ]
             random.shuffle(self.move_preferences)
 
     def get_move(self, state) -> int:
         for move in self.move_preferences:
             if move in state.legal_actions():
                 return self.favorite_move
-        raise MargamError("No preferred moves {self.move_preferences} out of legal moves: {state.legal_actions()}")
+        raise MargamError(
+            "No preferred moves {self.move_preferences} out of legal moves: {state.legal_actions()}"
+        )
 
 
 class MiniMax(Player):
@@ -99,9 +104,7 @@ class MiniMax(Player):
         super().__init__(*args, **kwargs)
         self.max_depth = max_depth
 
-    def eval_state(
-        self, state, depth, orig_player
-    ) -> Tuple[float, Optional[int]]:
+    def eval_state(self, state, depth, orig_player) -> Tuple[float, Optional[int]]:
         """
         Returns a tuple with
         - The value of the current state for player 0
@@ -138,6 +141,7 @@ class MiniMax(Player):
             orig_player=state.current_player(),
         )
         return move
+
 
 class ConservativePlayer(Player):
     """

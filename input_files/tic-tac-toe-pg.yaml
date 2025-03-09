@@ -1,6 +1,8 @@
 ---
 GAME: "tic_tac_toe"
 ALGORITHM: "PG"
+OPPONENTS:
+  - "random"
 MAX_EPISODES: 1_000_000
 #Learning:
 DISCOUNT_RATE: 0.90
