@@ -54,9 +54,9 @@ class DQNPlayer(Player):
         nn_input = keras.Input(shape=eg_input.shape)
 
         if self.game_handler.game_type == GameType.TIC_TAC_TOE:
-            q_values = self.initialize_tic_tac_toe_model()
+            q_values = self.initialize_tic_tac_toe_model(nn_input)
         elif self.game_handler.game_type == GameType.CONNECT_FOUR:
-            q_values = self.initialize_connect_four_model()
+            q_values = self.initialize_connect_four_model(nn_input)
         else:
             raise MargamError(f"{self.game_handler.game_type.value} not implemented for DQN")
 
@@ -70,12 +70,12 @@ class DQNPlayer(Player):
         x = layers.Dense(32, activation="relu")(input_flat)
         q_values = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(x)
 
-        # Dueling DQN adds a second column to the neural net that
+        # Deuling DQN adds a second column to the neural net that
         # computes state value V(s) and interprets the Q
         # values as advantage of that action in that state
         # Q(s,a) = A(s,a) + V(s)
         # Final output is the same so it is interoperable with vanilla DQN
-        if self.dueling:
+        if self.deuling:
             x_sv = layers.Dense(32, activation="relu")(input_flat)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (
@@ -89,7 +89,7 @@ class DQNPlayer(Player):
         x = layers.Flatten()(x)
         x = layers.Dense(64, activation="relu")(x)
         q_values = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(x)
-        if self.dueling:
+        if self.deuling:
             x_sv = layers.Dense(32, activation="relu")(x)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (
@@ -101,7 +101,7 @@ class DQNPlayer(Player):
 class DQNTrainer(RLTrainer):
 
     def __init__(self, *args, **kwargs):
-        super.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.target_network = keras.models.clone_model(self.agent.model)
         self.target_network.set_weights(self.agent.model.get_weights())
 
