@@ -1,29 +1,17 @@
-import itertools
 import random
 from collections import deque
-from enum import Enum
-from functools import partial
-import yaml
 
-import click
 import numpy as np
 import tensorflow as tf
 from keras.models import load_model
-from tensorboardX import SummaryWriter
 from tensorflow import keras, one_hot
 from tensorflow.keras import layers
 from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.optimizers import Adam
-from tqdm import tqdm
 
-from margam.player import MiniMax, Player
-from margam.utils import (
-    MargamError,
-    get_training_and_viewing_state,
-    record_episode_statistics,
-    generate_episode_transitions,
-    get_now_str,
-)
+from margam.player import Player
+from margam.rl import MargamError, GameType
+from margam.trainer import RLTrainer
 
 
 class DQNPlayer(Player):
@@ -37,16 +25,17 @@ class DQNPlayer(Player):
     while training
     """
 
-    def __init__(self, *args, random_weight=0, **kwargs):
+    def __init__(self, *args, model=None, deuling=True, random_weight=0, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = None
+        self.deuling = deuling
+        self.model = load_model(model) if model else self.initialize_model()
         self.random_weight = random_weight
 
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
         if np.random.random() < self.random_weight:
             return random.choice(state.legal_actions())
 
-        state_for_cov, human_view_state = get_training_and_viewing_state(game, state)
+        state_for_cov = self.game_handler.get_eval_vector(state)
         q_values = self.model.predict_on_batch(state_for_cov[np.newaxis, :])[0]
         q_values = q_values.astype(float)
         for i, _ in enumerate(q_values):
@@ -56,77 +45,135 @@ class DQNPlayer(Player):
 
         return max_q_ind
 
-    def initialize_model(game_type, dueling=True, show_model=True):
+    def initialize_model(self, show_model=True):
         """
         Construct neural network used by agent
         """
-        state_eg = self.game_handler.game.new_initial_state()
-        eval_vector_eg = get_training_and_viewing_state(state_eg)
-        nn_input = keras.Input(shape=eval_vector_eg.shape)
+        eg_state = self.game_handler.game.new_initial_state()
+        eg_input = self.game_handler.get_eval_vector(eg_state)
+        nn_input = keras.Input(shape=eg_input.shape)
 
         if self.game_handler.game_type == GameType.TIC_TAC_TOE:
-            q_values = self.initialize_tic_tac_toe_model(dueling=dueling)
-        elif self.game_handler == GameType.CONNECT_FOUR:
-            q_values = self.initialize_connect_four_model(dueling=dueling)
+            q_values = self.initialize_tic_tac_toe_model()
+        elif self.game_handler.game_type == GameType.CONNECT_FOUR:
+            q_values = self.initialize_connect_four_model()
         else:
-            raise MargamError(f"{game_type} not implemented for DQN")
+            raise MargamError(f"{self.game_handler.game_type.value} not implemented for DQN")
 
         model = keras.Model(inputs=nn_input, outputs=q_values, name="DQN-model")
         if show_model:
             model.summary()
         return model
 
-    def initialize_tic_tac_toe_model(self, nn_input, dueling=True):
+    def initialize_tic_tac_toe_model(self, nn_input):
         input_flat = layers.Flatten()(nn_input)
         x = layers.Dense(32, activation="relu")(input_flat)
-        q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
+        q_values = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(x)
 
         # Dueling DQN adds a second column to the neural net that
         # computes state value V(s) and interprets the Q
         # values as advantage of that action in that state
         # Q(s,a) = A(s,a) + V(s)
         # Final output is the same so it is interoperable with vanilla DQN
-        if dueling:
+        if self.dueling:
             x_sv = layers.Dense(32, activation="relu")(input_flat)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (
                 q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
             )
+        return q_values
 
-    def initialize_connect_four_model(self, nn_input, dueling=True):
+    def initialize_connect_four_model(self, nn_input):
         x = layers.Conv2D(64, 4)(nn_input)
         x = layers.MaxPooling2D(pool_size=(2, 2))(x)
         x = layers.Flatten()(x)
         x = layers.Dense(64, activation="relu")(x)
-        q_values = layers.Dense(game.num_distinct_actions(), activation="linear")(x)
-        if dueling:
+        q_values = layers.Dense(self.game_handler.game.num_distinct_actions(), activation="linear")(x)
+        if self.dueling:
             x_sv = layers.Dense(32, activation="relu")(x)
             sv = layers.Dense(1, activation="linear")(x_sv)
             q_values = (
                 q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
             )
+        return q_values
 
 
 class DQNTrainer(RLTrainer):
 
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super.__init__(*args, **kwargs)
-        self.target_network = None
-
-    @property
-    def algotype(self):
-        return "Deep Q Network"
+        self.target_network = keras.models.clone_model(self.agent.model)
+        self.target_network.set_weights(self.agent.model.get_weights())
 
     def get_unique_name(self) -> str:
         return f"DQN-{self.game_handler.game_type.value}-{self.get_now_str()}"
 
     def sample_experience_buffer(self, batch_size):
-        indices = np.random.choice(len(self.reward_buffer), batch_size, replace=False)
-        return [self.reward_buffer[idx] for idx in indices]
+        indices = np.random.choice(len(self.experience_buffer), batch_size, replace=False)
+        return [self.experience_buffer[idx] for idx in indices]
 
-    def update_neural_network(
-        self, step, training_data, agent, hp, optimizer, mse_loss, writer
-    ):
+    def initialize_agent(self):
+        self.agent = DQNPlayer(
+            self.game_handler,
+            model=None,
+            deuling=self.DEULING_DQN,
+            name=f"{self.name}-agent",
+        )
+        return self.agent
+
+    def initialize_training_stats(self):
+        super().initialize_training_stats()
+        self.mse_loss = MeanSquaredError()
+        self.optimizer = Adam(learning_rate=self.LEARNING_RATE)
+        self.experience_buffer = deque(maxlen=self.REPLAY_SIZE)
+
+        if self.RECORD_HISTOGRAMS % self.SYNC_TARGET_NETWORK != 0:
+            raise MargamError("SYNC_TARGET_NETWORK must divide RECORD_HISTOGRAMS")
+
+    def _train(self):
+        """
+        Perform the training loop that runs episodes
+        and uses the data to train a DQN player
+        """
+
+        while self.episode_ind <= self.MAX_EPISODES:
+            self.execute_training_step()
+
+    def execute_training_step(self):
+
+        self.agent.random_weight = max(
+            self.EPSILON_FINAL,
+            self.EPSILON_START - self.step / self.EPSILON_DECAY_LAST_FRAME,
+        )
+
+        agent_transitions, opponent = self.generate_episode_transitions()
+        if self.USE_SYMMETRY:
+            agent_transitions = self.add_symmetries(agent_transitions)
+
+        self.experience_buffer += agent_transitions
+        self.reward_buffer.append(agent_transitions[-1].reward)
+        self.reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
+        if self.writer and self.episode_ind % self.RECORD_EPISODES == 0:
+            self.record_episode_statistics()
+
+        if self.writer and self.agent.random_weight > self.EPSILON_FINAL:
+            self.writer.add_scalar("epsilon", self.agent.random_weight, self.step)
+
+        self.save_checkpoint_model()
+
+        for transition in agent_transitions:
+            self.step += 1
+            self.experience_buffer.append(transition)
+
+            # Don't start training the network until we have enough data
+            if len(self.experience_buffer) < self.REPLAY_START_SIZE:
+                continue
+
+            # Get training data
+            training_data = self.sample_experience_buffer(self.BATCH_SIZE)
+            self.update_neural_network(training_data)
+
+    def update_neural_network(self, training_data):
         """
         Perform one step of weight update
         """
@@ -155,7 +202,7 @@ class DQNTrainer(RLTrainer):
             resulting_boards
         )
         if self.DOUBLE_DQN:
-            resulting_board_q_on_policy = agent.model.predict_on_batch(resulting_boards)
+            resulting_board_q_on_policy = self.agent.model.predict_on_batch(resulting_boards)
             max_move_inds_on_policy = resulting_board_q_on_policy.argmax(axis=1)
             on_policy_move_mask = tf.one_hot(
                 max_move_inds_on_policy, depth=resulting_board_q_on_policy.shape[1]
@@ -181,50 +228,50 @@ class DQNTrainer(RLTrainer):
 
         # Compute MSE loss based on chosen move values only
         with tf.GradientTape() as tape:
-            predicted_q_values = agent.model(x_train)
+            predicted_q_values = self.agent.model(x_train)
             predicted_q_values = tf.multiply(predicted_q_values, selected_action_mask)
             predicted_q_values = tf.reduce_sum(predicted_q_values, 1)
             q_prediction_errors = predicted_q_values - q_to_train_single_values
-            loss_value = mse_loss(q_to_train_single_values, predicted_q_values)
+            loss_value = self.mse_loss(q_to_train_single_values, predicted_q_values)
 
         weights_and_biases_flat_before_update = np.concatenate(
-            [v.numpy().flatten() for v in agent.model.variables]
+            [v.numpy().flatten() for v in self.agent.model.variables]
         )
 
-        grads = tape.gradient(loss_value, agent.model.trainable_variables)
-        optimizer.apply_gradients(zip(grads, agent.model.trainable_variables))
+        grads = tape.gradient(loss_value, self.agent.model.trainable_variables)
+        self.optimizer.apply_gradients(zip(grads, self.agent.model.trainable_variables))
 
         # Record prediction error
-        if writer:
-            writer.add_scalar("loss", loss_value.numpy(), step)
-        if writer and step % self.RECORD_HISTOGRAMS == 0:
-            writer.add_histogram("q-predicted", predicted_q_values.numpy(), step)
-            writer.add_histogram("q-train", q_to_train_single_values, step)
-            writer.add_histogram("q-error", q_prediction_errors.numpy(), step)
+        if self.writer:
+            self.writer.add_scalar("loss", loss_value.numpy(), self.step)
+        if self.writer and self.step % self.RECORD_HISTOGRAMS == 0:
+            self.writer.add_histogram("q-predicted", predicted_q_values.numpy(), self.step)
+            self.writer.add_histogram("q-train", q_to_train_single_values, self.step)
+            self.writer.add_histogram("q-error", q_prediction_errors.numpy(), self.step)
 
             weights_and_biases_flat = np.concatenate(
-                [v.numpy().flatten() for v in agent.model.variables]
+                [v.numpy().flatten() for v in self.agent.model.variables]
             )
-            writer.add_histogram("weights and biases", weights_and_biases_flat, step)
+            self.writer.add_histogram("weights and biases", weights_and_biases_flat, self.step)
 
             # Track gradient variance
             grads_flat = np.concatenate([v.numpy().flatten() for v in grads])
-            writer.add_histogram("gradients", grads_flat, step)
+            self.writer.add_histogram("gradients", grads_flat, self.step)
             grad_rmse = np.sqrt(np.mean(grads_flat**2))
-            writer.add_scalar("grad_rmse", grad_rmse, step)
+            self.writer.add_scalar("grad_rmse", grad_rmse, self.step)
             grad_max = np.abs(grads_flat).max()
-            writer.add_scalar("grad_max", grad_max, step)
+            self.writer.add_scalar("grad_max", grad_max, self.step)
 
             weights_and_biases_delta = (
                 weights_and_biases_flat - weights_and_biases_flat_before_update
             )
-            writer.add_histogram("weight-bias-updates", weights_and_biases_delta, step)
+            self.writer.add_histogram("weight-bias-updates", weights_and_biases_delta, self.step)
 
         # Update policy
-        if step % self.SYNC_TARGET_NETWORK == 0:
-            if step % self.RECORD_HISTOGRAMS == 0:
+        if self.step % self.SYNC_TARGET_NETWORK == 0:
+            if self.step % self.RECORD_HISTOGRAMS == 0:
                 weights_and_biases_flat = np.concatenate(
-                    [v.numpy().flatten() for v in agent.model.variables]
+                    [v.numpy().flatten() for v in self.agent.model.variables]
                 )
                 weights_and_biases_target = np.concatenate(
                     [v.numpy().flatten() for v in self.target_network.variables]
@@ -232,104 +279,9 @@ class DQNTrainer(RLTrainer):
                 target_parameter_updates = (
                     weights_and_biases_flat - weights_and_biases_target
                 )
-                if writer:
-                    writer.add_histogram(
-                        "target parameter updates", target_parameter_updates, step
+                if self.writer:
+                    self.writer.add_histogram(
+                        "target parameter updates", target_parameter_updates, self.step
                     )
 
-            self.target_network.set_weights(agent.model.get_weights())
-
-    def _train(game_type, hp):
-        """
-        Perform the training loop that runs episodes
-        and uses the data to train a DQN player
-        """
-
-        if self.RECORD_HISTOGRAMS % self.SYNC_TARGET_NETWORK != 0:
-            raise MargamError("SYNC_TARGET_NETWORK must divide RECORD_HISTOGRAMS")
-
-        # Intialize agent and model
-        agent = DQNPlayer(name=f"DQN-{get_now_str()}")
-        agent.model = initialize_model(game_type, hp)
-        self.target_network = keras.models.clone_model(agent.model)
-        self.target_network.set_weights(agent.model.get_weights())
-        with open(f"saved-models/{agent.name}.yaml", "w") as f:
-            yaml.dump(hp, f)
-
-        opponents = [MiniMax(name="Minnie", max_depth=1)]
-
-        experience_buffer = deque(maxlen=self.REPLAY_SIZE)
-        reward_buffer = deque(maxlen=self.REWARD_BUFFER_SIZE)
-        reward_buffer_vs = {}
-        for opp in opponents:
-            reward_buffer_vs[opp.name] = deque(
-                maxlen=self.REWARD_BUFFER_SIZE // len(opponents)
-            )
-
-        mse_loss = MeanSquaredError()
-        optimizer = Adam(learning_rate=self.LEARNING_RATE)
-
-        writer = SummaryWriter(f"runs/{agent.name}")  # inject this
-        best_reward = self.SAVE_MODEL_ABS_THRESHOLD
-        episode_ind = 0  # Number of full episodes completed
-        step = 0  # Number of agent actions taken
-        while True:
-
-            if episode_ind > self.MAX_EPISODES:
-                break
-
-            agent.random_weight = max(
-                self.EPSILON_FINAL,
-                self.EPSILON_START - step / self.EPSILON_DECAY_LAST_FRAME,
-            )
-
-            opponent = opponents[(episode_ind // 2) % len(opponents)]
-            player_pos = episode_ind % 2
-            agent_transitions = generate_episode_transitions(
-                game_type, hp, agent, opponent, player_pos
-            )
-            if self.USE_SYMMETRY:
-                agent_transitions = add_symmetries(agent_transitions)
-            episode_ind += 1
-
-            experience_buffer += agent_transitions
-            reward_buffer.append(agent_transitions[-1].reward)
-            reward_buffer_vs[opponent.name].append(agent_transitions[-1].reward)
-            if self.writer and episode_ind % self.RECORD_EPISODES == 0:
-                record_episode_statistics(
-                    writer,
-                    game,
-                    step,
-                    experience_buffer,
-                    reward_buffer,
-                    reward_buffer_vs,
-                )
-
-            if self.writer and agent.random_weight > self.EPSILON_FINAL:
-                writer.add_scalar("epsilon", agent.random_weight, step)
-
-            # Save model if we have a historically best result
-            smoothed_reward = sum(reward_buffer) / len(reward_buffer)
-            if (
-                len(reward_buffer) == self.REWARD_BUFFER_SIZE
-                and smoothed_reward > best_reward + self.SAVE_MODEL_REL_THRESHOLD
-            ):
-                agent.model.save(f"saved-models/{agent.name}.keras")
-                best_reward = smoothed_reward
-
-            for transition in agent_transitions:
-                step += 1
-                experience_buffer.append(transition)
-
-                # Don't start training the network until we have enough data
-                if len(experience_buffer) < self.REPLAY_START_SIZE:
-                    continue
-
-                # Get training data
-                training_data = self.sample_experience_buffer(self.BATCH_SIZE)
-
-                self.update_neural_network(
-                    training_data,
-                    optimizer,
-                    mse_loss,
-                )
+            self.target_network.set_weights(self.agent.model.get_weights())

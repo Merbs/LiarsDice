@@ -35,7 +35,7 @@ class PolicyPlayer(Player):
         ]
         return selected_move
 
-    def initialize_model(self, actor_critic=False, show_model=True):
+    def initialize_model(self, show_model=True):
         eg_state = self.game_handler.game.new_initial_state()
         eg_input = self.game_handler.get_eval_vector(eg_state)
         nn_input = keras.Input(shape=eg_input.shape)
@@ -127,10 +127,6 @@ class PolicyGradientTrainer(RLTrainer):
             name=f"{self.name}-agent",
         )
         return self.agent
-
-    @property
-    def algotype(self):
-        return "Policy Gradient"
 
     def get_unique_name(self) -> str:
         return f"PG-{self.game_handler.game_type.value}-{self.get_now_str()}"

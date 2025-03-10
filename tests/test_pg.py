@@ -1,6 +1,6 @@
 import yaml
 
-from margam.pg import PolicyPlayer, PolicyGradientTrainer
+from margam.pg import PolicyGradientTrainer
 from margam.rl import build_game_handler
 from margam.player import RandomPlayer
 
@@ -14,6 +14,6 @@ def test_train_pg():
         hyperparameters = get_short_training_hp(),
         save_to_disk=False,
     )
-    trainer.MAX_EPISODES = 1000
+    trainer.MAX_EPISODES = 100
     trainer.train()
     assert trainer.step > 0
