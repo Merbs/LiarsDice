@@ -5,3 +5,5 @@ tqdm
 tensorboardX
 click
 open_spiel
+pytest
+
