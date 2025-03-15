@@ -14,6 +14,13 @@ from margam.rl import MargamError, GameType
 from margam.trainer import RLTrainer
 
 
+class DeulingLayer(layers.Layer):
+    def build(self):
+        pass
+
+    def call(self, q_values, sv):
+        return q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
+
 class DQNPlayer(Player):
     """
     Agent that uses a neural network to compute
@@ -78,9 +85,7 @@ class DQNPlayer(Player):
         if self.deuling:
             x_sv = layers.Dense(32, activation="relu")(input_flat)
             sv = layers.Dense(1, activation="linear")(x_sv)
-            q_values = (
-                q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
-            )
+            q_values = DeulingLayer()(q_values,sv)
         return q_values
 
     def initialize_connect_four_model(self, nn_input):
@@ -92,9 +97,7 @@ class DQNPlayer(Player):
         if self.deuling:
             x_sv = layers.Dense(32, activation="relu")(x)
             sv = layers.Dense(1, activation="linear")(x_sv)
-            q_values = (
-                q_values - tf.math.reduce_mean(q_values, axis=1, keepdims=True) + sv
-            )
+            q_values = DeulingLayer()(q_values,sv)
         return q_values
 
 
