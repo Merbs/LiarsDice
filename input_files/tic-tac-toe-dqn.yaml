@@ -1,5 +1,7 @@
 ---
 GAME: "tic_tac_toe"
+OPPONENTS:
+  - "random"
 ALGORITHM: "DQN"
 MAX_EPISODES: 1_000_000
 #Learning:

@@ -145,7 +145,6 @@ class PolicyGradientTrainer(RLTrainer):
             self.agent = PolicyPlayer(
                 name=f"PG-{self.get_now_str()}"
             )  # auto-build player?
-        self.initialize_training_stats()
 
         while self.episode_ind <= self.MAX_EPISODES:
             self.execute_episodic_training_step()

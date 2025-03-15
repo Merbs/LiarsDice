@@ -9,7 +9,7 @@ def get_short_training_hp():
         hp = yaml.safe_load(f)
     return hp
 
-def test_train_pg():
+def test_train_dqn():
     trainer = DQNTrainer(
         hyperparameters = get_short_training_hp(),
         save_to_disk=False,

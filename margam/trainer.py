@@ -110,6 +110,8 @@ class RLTrainer(ABC):
             raise MargamError("Agent is required for training")
         if not self.rotating_opponents:
             raise MargamError("Opponent list must not be empty")
+        
+        self.initialize_training_stats()
 
         try:
             self._train()
