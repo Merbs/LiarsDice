@@ -81,7 +81,7 @@ class ActionSpammer(Player):
     def get_move(self, state) -> int:
         for move in self.move_preferences:
             if move in state.legal_actions():
-                return self.favorite_move
+                return move
         raise MargamError(
             "No preferred moves {self.move_preferences} out of legal moves: {state.legal_actions()}"
         )
@@ -123,7 +123,7 @@ class MiniMax(Player):
         for move in state.legal_actions():
             state_result = copy.copy(state)
             state_result.apply_action(move)
-            value, _ = self.eval_state(state_result, game, depth - 1, orig_player)
+            value, _ = self.eval_state(state_result, depth - 1, orig_player)
             actions_with_value[value].append(move)
 
         if state.current_player() == orig_player:
@@ -148,10 +148,7 @@ class ConservativePlayer(Player):
     For liars dice
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def get_move(self, game, state) -> int:
+    def get_move(self, state) -> int:
         """
         Call with 33% probability. Otherwise take
         most conservative bet
