@@ -71,6 +71,10 @@ class GameHandler(ABC):
         """
         pass
 
+    def show_legal_actions_on_terminal(self,state):
+        print("Available moves:")
+        print(state.legal_actions())
+
     def get_open_spiel_game(self):
         return pyspiel.load_game(self.game_type.value)
 

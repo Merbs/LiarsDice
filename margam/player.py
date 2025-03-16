@@ -41,8 +41,7 @@ class HumanPlayer(Player):
         print(f"\nPlayer: {self.name}")
         eval_vector = self.game_handler.get_eval_vector(state)
         self.game_handler.show_state_on_terminal(eval_vector)
-        print("Available moves:")
-        print(state.legal_actions())
+        self.game_handler.show_legal_actions_on_terminal(state)
 
         valid_input = False
         while not valid_input:
