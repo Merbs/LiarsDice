@@ -5,7 +5,7 @@ import click
 import pyspiel
 
 from margam.player import HumanPlayer, MiniMax
-from margam.rl import build_game_handler
+from margam.rl import build_game_handler, GameType
 
 @click.group()
 def main():
@@ -71,10 +71,7 @@ def play(game_type, opponent, depth, model, second):
 
 
 @main.command()
-@click.argument(
-    'hyperparameter-file',
-    help="YAML file with hyperparameter values",
-)
+@click.argument('hyperparameter-file')
 def train(hyperparameter_file):
 
     with open(hyperparameter_file, "r") as f:
