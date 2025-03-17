@@ -114,9 +114,12 @@ class GameHandler(ABC):
                 action=action,
                 legal_actions=legal_actions,
             )
+            print(current_player_ind)
+            print(new_transition)
             agent_transitions[current_player_ind].append(new_transition)
 
             state.apply_action(action)
+            print(state.rewards())
 
             # Update rewards for last action taken by each player
             # since these may be updated after another player
@@ -201,6 +204,7 @@ class LiarsDiceHandler(GameHandler):
 
     def __init__(self, n_dice=5):
         self.n_dice = n_dice
+        self.n_sides = 6
         super().__init__(GameType.LIARS_DICE)
 
     def get_open_spiel_game(self):
@@ -268,3 +272,15 @@ class LiarsDiceHandler(GameHandler):
         if opp_bet_q > 0:
             value = int(np.where(opp_bet == 1)[0] + 1)
             print(f"Opponent's bet: {opp_bet_q} {value}'s")
+
+    def show_legal_actions_on_terminal(self,state):
+        print("Available moves:")
+        for la in state.legal_actions():
+            if la == max(state.legal_actions()):
+                print(f"[{la}] Doubt ")
+                continue
+
+            quantity_of_die = la // self.n_sides + 1
+            value_of_die = la % self.n_sides + 1
+            print(f"[{la}] {quantity_of_die} {value_of_die}s",end="\t")
+        

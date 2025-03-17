@@ -65,8 +65,10 @@ def play(game_type, opponent, depth, model, second):
         players = list(reversed(players))
     tsns = gh.generate_episode_transitions(players)
 
+    print(tsns)
     total_rewards = [sum(tsn.reward for tsn in tsn_list) for tsn_list in tsns]
     winner = np.argmax(total_rewards)
+    print(total_rewards)
     print(f"{players[winner].name} won!")
 
 
